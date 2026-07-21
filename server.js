@@ -81,7 +81,7 @@ async function fetchServerInstances(server) {
   if (!server || !server.url || !server.apiKey) return [];
   const cleanUrl = server.url.replace(/\/$/, '');
 
-  // 1. Tenta endpoint do Evolution Go (/instance/all ou /instance/fetch)
+  // 1. Tenta /instance/all (Evolution Go)
   let res = await evoFetch(`${cleanUrl}/instance/all`, {
     headers: { 'apikey': server.apiKey }
   });
@@ -97,6 +97,20 @@ async function fetchServerInstances(server) {
       }));
   }
 
+  // 2. Tenta /instance/fetchInstances (v1/v2 Baileys Node)
+  res = await evoFetch(`${cleanUrl}/instance/fetchInstances`, {
+    headers: { 'apikey': server.apiKey }
+  });
+
+  if (res.ok && Array.isArray(res.data)) {
+    return res.data.map(item => ({
+      name: item.instance?.instanceName || item.name || item.instanceName || 'Instância',
+      status: item.instance?.status || item.instance?.state || item.status || (item.connected ? 'open' : 'close'),
+      token: item.token || item.instance?.token || ''
+    }));
+  }
+
+  // 3. Tenta /instance/fetch (Variação Evolution Go)
   res = await evoFetch(`${cleanUrl}/instance/fetch`, {
     headers: { 'apikey': server.apiKey }
   });
@@ -110,19 +124,6 @@ async function fetchServerInstances(server) {
         status: item.connected ? 'open' : 'close',
         token: item.token || ''
       }));
-  }
-
-  // 2. Tenta endpoint padrão v1/v2 Baileys (/instance/fetchInstances)
-  res = await evoFetch(`${cleanUrl}/instance/fetchInstances`, {
-    headers: { 'apikey': server.apiKey }
-  });
-
-  if (res.ok && Array.isArray(res.data)) {
-    return res.data.map(item => ({
-      name: item.instance?.instanceName || item.name || item.instanceName || 'Instância',
-      status: item.instance?.status || item.instance?.state || item.status || (item.connected ? 'open' : 'close'),
-      token: item.token || item.instance?.token || ''
-    }));
   }
 
   return [];
@@ -264,6 +265,7 @@ async function logoutEVOInstance(server, instanceName, clientEvoToken = '') {
   const cleanUrl = server.url.replace(/\/$/, '');
   const activeKey = clientEvoToken || server.apiKey;
 
+  // Evolution Go: DELETE /instance/logout
   let res = await evoFetch(`${cleanUrl}/instance/logout`, {
     method: 'DELETE',
     headers: { 'apikey': activeKey }
