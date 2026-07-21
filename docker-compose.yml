@@ -2,15 +2,16 @@ version: '3.8'
 
 services:
   evoconnect:
-    image: node:18-alpine
-    working_dir: /app
-    command: sh -c "npm install && node server.js"
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: evoconnect-dashboard:latest
     ports:
       - "3000:3000"
     environment:
       - PORT=3000
       - NODE_ENV=production
-      - BASE_URL=https://meupainel.seudominio.com.br
+      - BASE_URL=http://75.119.145.128:3000
     volumes:
       - evoconnect_data:/app/data
     deploy:
