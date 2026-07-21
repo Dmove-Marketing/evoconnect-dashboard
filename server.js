@@ -1,3 +1,5 @@
+process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+
 const express = require('express');
 const cors = require('cors');
 const fs = require('fs');
@@ -79,8 +81,39 @@ async function fetchServerInstances(server) {
   if (!server || !server.url || !server.apiKey) return [];
   const cleanUrl = server.url.replace(/\/$/, '');
 
-  // 1. Tenta endpoint padrão v1/v2 Baileys (/instance/fetchInstances)
-  let res = await evoFetch(`${cleanUrl}/instance/fetchInstances`, {
+  // 1. Tenta endpoint do Evolution Go (/instance/all ou /instance/fetch)
+  let res = await evoFetch(`${cleanUrl}/instance/all`, {
+    headers: { 'apikey': server.apiKey }
+  });
+
+  if (res.ok && (Array.isArray(res.data) || Array.isArray(res.data?.response))) {
+    const list = Array.isArray(res.data) ? res.data : res.data.response;
+    return list
+      .filter(item => typeof item === 'object' && item.name)
+      .map(item => ({
+        name: item.name || item.instanceName || 'Instância',
+        status: item.connected ? 'open' : 'close',
+        token: item.token || ''
+      }));
+  }
+
+  res = await evoFetch(`${cleanUrl}/instance/fetch`, {
+    headers: { 'apikey': server.apiKey }
+  });
+
+  if (res.ok && (Array.isArray(res.data) || Array.isArray(res.data?.response))) {
+    const list = Array.isArray(res.data) ? res.data : res.data.response;
+    return list
+      .filter(item => typeof item === 'object' && item.name)
+      .map(item => ({
+        name: item.name || item.instanceName || 'Instância',
+        status: item.connected ? 'open' : 'close',
+        token: item.token || ''
+      }));
+  }
+
+  // 2. Tenta endpoint padrão v1/v2 Baileys (/instance/fetchInstances)
+  res = await evoFetch(`${cleanUrl}/instance/fetchInstances`, {
     headers: { 'apikey': server.apiKey }
   });
 
@@ -89,34 +122,6 @@ async function fetchServerInstances(server) {
       name: item.instance?.instanceName || item.name || item.instanceName || 'Instância',
       status: item.instance?.status || item.instance?.state || item.status || (item.connected ? 'open' : 'close'),
       token: item.token || item.instance?.token || ''
-    }));
-  }
-
-  // 2. Tenta endpoint do Evolution Go (/instance/all)
-  res = await evoFetch(`${cleanUrl}/instance/all`, {
-    headers: { 'apikey': server.apiKey }
-  });
-
-  if (res.ok && (Array.isArray(res.data) || Array.isArray(res.data?.response))) {
-    const list = Array.isArray(res.data) ? res.data : res.data.response;
-    return list.map(item => ({
-      name: item.name || item.instanceName || 'Instância',
-      status: item.connected ? 'open' : 'close',
-      token: item.token || ''
-    }));
-  }
-
-  // 3. Tenta /instance/fetch (Variação do Evolution Go)
-  res = await evoFetch(`${cleanUrl}/instance/fetch`, {
-    headers: { 'apikey': server.apiKey }
-  });
-
-  if (res.ok && (Array.isArray(res.data) || Array.isArray(res.data?.response))) {
-    const list = Array.isArray(res.data) ? res.data : res.data.response;
-    return list.map(item => ({
-      name: item.name || item.instanceName || 'Instância',
-      status: item.connected ? 'open' : 'close',
-      token: item.token || ''
     }));
   }
 
@@ -131,8 +136,23 @@ async function getEVOStatus(server, instanceName, clientEvoToken = '') {
 
   const cleanUrl = server.url.replace(/\/$/, '');
 
+  // Suporte a Evolution Go: tenta buscar status via /instance/status com o token da instância
+  const activeKey = clientEvoToken || server.apiKey;
+  let res = await evoFetch(`${cleanUrl}/instance/status`, {
+    headers: { 'apikey': activeKey }
+  });
+
+  if (res.ok && res.data?.data) {
+    const isConnected = res.data.data.Connected || res.data.data.LoggedIn;
+    return {
+      status: isConnected ? 'CONNECTED' : 'DISCONNECTED',
+      phone: res.data.data.Jid || '',
+      profileName: res.data.data.Name || ''
+    };
+  }
+
   // Tenta endpoint padrão v1/v2 (/instance/connectionState/:name)
-  let res = await evoFetch(`${cleanUrl}/instance/connectionState/${instanceName}`, {
+  res = await evoFetch(`${cleanUrl}/instance/connectionState/${instanceName}`, {
     headers: { 'apikey': server.apiKey }
   });
 
@@ -149,21 +169,6 @@ async function getEVOStatus(server, instanceName, clientEvoToken = '') {
     } else {
       return { status: 'DISCONNECTED' };
     }
-  }
-
-  // Suporte a Evolution Go: tenta buscar status via /instance/status ou /instance/all
-  const activeKey = clientEvoToken || server.apiKey;
-  res = await evoFetch(`${cleanUrl}/instance/status`, {
-    headers: { 'apikey': activeKey }
-  });
-
-  if (res.ok && res.data?.data) {
-    const isConnected = res.data.data.Connected || res.data.data.LoggedIn;
-    return {
-      status: isConnected ? 'CONNECTED' : 'DISCONNECTED',
-      phone: res.data.data.Jid || '',
-      profileName: res.data.data.Name || ''
-    };
   }
 
   // Fallback para Evolution Go: busca a lista geral /instance/all
@@ -183,14 +188,15 @@ async function getEVOQRCode(server, instanceName, clientEvoToken = '') {
   }
 
   const cleanUrl = server.url.replace(/\/$/, '');
+  const activeKey = clientEvoToken || server.apiKey;
 
-  // Tenta endpoint v1/v2 (/instance/connect/:name)
-  let res = await evoFetch(`${cleanUrl}/instance/connect/${instanceName}`, {
-    headers: { 'apikey': server.apiKey }
+  // Evolution Go: tenta /instance/qr usando o token da instância ou apiKey
+  let res = await evoFetch(`${cleanUrl}/instance/qr`, {
+    headers: { 'apikey': activeKey }
   });
 
   if (res.ok) {
-    let qrCode = res.data?.code || res.data?.base64 || res.data?.qrcode?.base64 || res.data?.qrcode;
+    let qrCode = res.data?.qrcode || res.data?.code || res.data?.base64 || res.data?.data?.qrcode;
     let pairingCode = res.data?.pairingCode || null;
     if (qrCode && !qrCode.startsWith('data:image')) {
       qrCode = `data:image/png;base64,${qrCode}`;
@@ -198,14 +204,13 @@ async function getEVOQRCode(server, instanceName, clientEvoToken = '') {
     return { ok: true, qrCode, pairingCode };
   }
 
-  // Evolution Go: tenta /instance/qr usando o token da instância ou apiKey
-  const activeKey = clientEvoToken || server.apiKey;
-  res = await evoFetch(`${cleanUrl}/instance/qr`, {
-    headers: { 'apikey': activeKey }
+  // Tenta endpoint v1/v2 (/instance/connect/:name)
+  res = await evoFetch(`${cleanUrl}/instance/connect/${instanceName}`, {
+    headers: { 'apikey': server.apiKey }
   });
 
   if (res.ok) {
-    let qrCode = res.data?.qrcode || res.data?.code || res.data?.base64 || res.data?.data?.qrcode;
+    let qrCode = res.data?.code || res.data?.base64 || res.data?.qrcode?.base64 || res.data?.qrcode;
     let pairingCode = res.data?.pairingCode || null;
     if (qrCode && !qrCode.startsWith('data:image')) {
       qrCode = `data:image/png;base64,${qrCode}`;
@@ -226,17 +231,8 @@ async function getEVOPairingCode(server, instanceName, phoneNumber, clientEvoTok
   const activeKey = clientEvoToken || server.apiKey;
   const cleanPhone = phoneNumber.replace(/\D/g, '');
 
-  let res = await evoFetch(`${cleanUrl}/instance/connect/${instanceName}?number=${cleanPhone}`, {
-    headers: { 'apikey': server.apiKey }
-  });
-
-  if (res.ok) {
-    const code = res.data?.pairingCode || res.data?.code;
-    return { ok: true, pairingCode: code };
-  }
-
   // Evolution Go: POST /instance/pair
-  res = await evoFetch(`${cleanUrl}/instance/pair`, {
+  let res = await evoFetch(`${cleanUrl}/instance/pair`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'apikey': activeKey },
     body: JSON.stringify({ phone: cleanPhone })
@@ -244,6 +240,15 @@ async function getEVOPairingCode(server, instanceName, phoneNumber, clientEvoTok
 
   if (res.ok) {
     const code = res.data?.pairingCode || res.data?.code || res.data?.data?.code;
+    return { ok: true, pairingCode: code };
+  }
+
+  res = await evoFetch(`${cleanUrl}/instance/connect/${instanceName}?number=${cleanPhone}`, {
+    headers: { 'apikey': server.apiKey }
+  });
+
+  if (res.ok) {
+    const code = res.data?.pairingCode || res.data?.code;
     return { ok: true, pairingCode: code };
   }
 
@@ -259,16 +264,16 @@ async function logoutEVOInstance(server, instanceName, clientEvoToken = '') {
   const cleanUrl = server.url.replace(/\/$/, '');
   const activeKey = clientEvoToken || server.apiKey;
 
-  let res = await evoFetch(`${cleanUrl}/instance/logout/${instanceName}`, {
+  // Evolution Go: DELETE /instance/logout
+  let res = await evoFetch(`${cleanUrl}/instance/logout`, {
     method: 'DELETE',
-    headers: { 'apikey': server.apiKey }
+    headers: { 'apikey': activeKey }
   });
 
   if (!res.ok) {
-    // Evolution Go: DELETE /instance/logout
-    res = await evoFetch(`${cleanUrl}/instance/logout`, {
+    res = await evoFetch(`${cleanUrl}/instance/logout/${instanceName}`, {
       method: 'DELETE',
-      headers: { 'apikey': activeKey }
+      headers: { 'apikey': server.apiKey }
     });
   }
 
@@ -353,7 +358,6 @@ async function syncAllInstances() {
         db.clients.push(newClient);
         addedCount++;
       } else {
-        // Atualiza o token do Evolution Go se disponível
         if (remoteInst.token && !exists.evoGoToken) {
           exists.evoGoToken = remoteInst.token;
         }
