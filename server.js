@@ -81,23 +81,48 @@ async function fetchServerInstances(server) {
   if (!server || !server.url || !server.apiKey) return [];
   const cleanUrl = server.url.replace(/\/$/, '');
 
-  // 1. Tenta /instance/all (Evolution Go)
+  // 1. Tenta endpoint do Evolution Go (/instance/all ou /instance/fetch)
   let res = await evoFetch(`${cleanUrl}/instance/all`, {
     headers: { 'apikey': server.apiKey }
   });
 
-  if (res.ok && (Array.isArray(res.data) || Array.isArray(res.data?.response))) {
-    const list = Array.isArray(res.data) ? res.data : res.data.response;
-    return list
-      .filter(item => typeof item === 'object' && item && item.name)
-      .map(item => ({
-        name: item.name || item.instanceName || 'Instância',
-        status: item.connected ? 'open' : 'close',
-        token: item.token || ''
-      }));
+  if (res.ok) {
+    const list = Array.isArray(res.data) 
+      ? res.data 
+      : (Array.isArray(res.data?.data) ? res.data.data : (Array.isArray(res.data?.response) ? res.data.response : null));
+
+    if (list) {
+      return list
+        .filter(item => typeof item === 'object' && item && item.name)
+        .map(item => ({
+          name: item.name || item.instanceName || 'Instância',
+          status: item.connected ? 'open' : 'close',
+          token: item.token || ''
+        }));
+    }
   }
 
-  // 2. Tenta /instance/fetchInstances (v1/v2 Baileys Node)
+  res = await evoFetch(`${cleanUrl}/instance/fetch`, {
+    headers: { 'apikey': server.apiKey }
+  });
+
+  if (res.ok) {
+    const list = Array.isArray(res.data) 
+      ? res.data 
+      : (Array.isArray(res.data?.data) ? res.data.data : (Array.isArray(res.data?.response) ? res.data.response : null));
+
+    if (list) {
+      return list
+        .filter(item => typeof item === 'object' && item && item.name)
+        .map(item => ({
+          name: item.name || item.instanceName || 'Instância',
+          status: item.connected ? 'open' : 'close',
+          token: item.token || ''
+        }));
+    }
+  }
+
+  // 2. Tenta endpoint padrão v1/v2 Baileys Node (/instance/fetchInstances)
   res = await evoFetch(`${cleanUrl}/instance/fetchInstances`, {
     headers: { 'apikey': server.apiKey }
   });
@@ -108,22 +133,6 @@ async function fetchServerInstances(server) {
       status: item.instance?.status || item.instance?.state || item.status || (item.connected ? 'open' : 'close'),
       token: item.token || item.instance?.token || ''
     }));
-  }
-
-  // 3. Tenta /instance/fetch (Variação Evolution Go)
-  res = await evoFetch(`${cleanUrl}/instance/fetch`, {
-    headers: { 'apikey': server.apiKey }
-  });
-
-  if (res.ok && (Array.isArray(res.data) || Array.isArray(res.data?.response))) {
-    const list = Array.isArray(res.data) ? res.data : res.data.response;
-    return list
-      .filter(item => typeof item === 'object' && item && item.name)
-      .map(item => ({
-        name: item.name || item.instanceName || 'Instância',
-        status: item.connected ? 'open' : 'close',
-        token: item.token || ''
-      }));
   }
 
   return [];
