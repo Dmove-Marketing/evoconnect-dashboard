@@ -20,6 +20,8 @@ services:
       labels:
         - "traefik.enable=true"
         - "traefik.http.routers.evoconnect.rule=Host(`painel.dmove.com.br`)"
+        - "traefik.http.routers.evoconnect.entrypoints=web,websecure"
+        - "traefik.http.routers.evoconnect.tls=true"
         - "traefik.http.services.evoconnect.loadbalancer.server.port=3000"
 
 volumes:
