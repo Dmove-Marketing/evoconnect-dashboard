@@ -14,6 +14,8 @@ services:
       - BASE_URL=https://painel.dmove.com.br
     volumes:
       - evoconnect_data:/app/data
+    networks:
+      - server3net
     deploy:
       restart_policy:
         condition: on-failure
@@ -26,3 +28,7 @@ services:
 
 volumes:
   evoconnect_data:
+
+networks:
+  server3net:
+    external: true
