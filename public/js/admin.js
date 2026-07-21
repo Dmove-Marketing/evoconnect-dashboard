@@ -5,6 +5,9 @@ document.addEventListener('DOMContentLoaded', () => {
   const adminPasswordInput = document.getElementById('admin-password');
   const btnLogoutAdmin = document.getElementById('btn-logout-admin');
 
+  const btnSyncAll = document.getElementById('btn-sync-all');
+  const btnSyncOverview = document.getElementById('btn-sync-overview');
+
   const tabBtns = document.querySelectorAll('.tab-btn');
   const tabContents = document.querySelectorAll('.tab-content');
 
@@ -21,6 +24,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const clientPhoneInput = document.getElementById('client-phone');
   const clientServerSelect = document.getElementById('client-server-id');
   const clientInstanceInput = document.getElementById('client-instance-name');
+  const clientCreateInEvoCheck = document.getElementById('client-create-in-evo');
   const clientsTbody = document.getElementById('clients-tbody');
 
   // Elementos da Aba Servidores
@@ -48,13 +52,11 @@ document.addEventListener('DOMContentLoaded', () => {
   const settingAdminPassword = document.getElementById('setting-admin-password');
   const btnSaveSettings = document.getElementById('btn-save-settings');
 
-  // Checa autenticação inicial
   const savedToken = localStorage.getItem('evoconnect_admin_token');
   if (savedToken === 'admin-authenticated-session') {
     showDashboard();
   }
 
-  // Login
   btnAdminLogin.addEventListener('click', () => {
     const password = adminPasswordInput.value;
     fetch('/api/admin/login', {
@@ -86,7 +88,6 @@ document.addEventListener('DOMContentLoaded', () => {
     loadOverviewData();
   }
 
-  // Navegação por Abas
   tabBtns.forEach(btn => {
     btn.addEventListener('click', () => {
       tabBtns.forEach(b => b.classList.remove('active'));
@@ -102,7 +103,31 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 
-  // Carrega Visão Geral
+  function triggerSync() {
+    btnSyncAll.disabled = true;
+    btnSyncAll.textContent = '🔄 Sincronizando...';
+
+    fetch('/api/admin/sync-instances', { method: 'POST' })
+      .then(res => res.json())
+      .then(data => {
+        btnSyncAll.disabled = false;
+        btnSyncAll.textContent = '🔄 Sincronizar Instâncias da EVO';
+        loadOverviewData();
+        if (data.addedCount > 0) {
+          alert(`Sincronização concluída! ${data.addedCount} nova(s) instância(s) encontrada(s) e adicionada(s) ao painel.`);
+        } else {
+          alert('Todas as instâncias já estão sincronizadas com o painel!');
+        }
+      })
+      .catch(() => {
+        btnSyncAll.disabled = false;
+        btnSyncAll.textContent = '🔄 Sincronizar Instâncias da EVO';
+      });
+  }
+
+  if (btnSyncAll) btnSyncAll.addEventListener('click', triggerSync);
+  if (btnSyncOverview) btnSyncOverview.addEventListener('click', triggerSync);
+
   function loadOverviewData() {
     fetch('/api/admin/overview')
       .then(res => res.json())
@@ -122,10 +147,9 @@ document.addEventListener('DOMContentLoaded', () => {
       .catch(err => console.error('Erro ao carregar dados do admin:', err));
   }
 
-  // Renderiza Tabela da Visão Geral com Botão de Copiar Link
   function renderOverviewTable(clients) {
     if (!clients || clients.length === 0) {
-      overviewClientsTbody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: var(--text-muted);">Nenhum cliente cadastrado ainda.</td></tr>`;
+      overviewClientsTbody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: var(--text-muted);">Nenhum cliente cadastrado ainda. Clique em "Sincronizar Instâncias" para buscar instâncias existentes na EVO.</td></tr>`;
       return;
     }
 
@@ -156,28 +180,33 @@ document.addEventListener('DOMContentLoaded', () => {
     }).join('');
   }
 
-  // Renderiza Tabela de Gerenciamento de Clientes
   function renderClientsTable(clients) {
     if (!clients || clients.length === 0) {
-      clientsTbody.innerHTML = `<tr><td colspan="4" style="text-align: center; color: var(--text-muted);">Nenhum cliente cadastrado.</td></tr>`;
+      clientsTbody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: var(--text-muted);">Nenhum cliente cadastrado.</td></tr>`;
       return;
     }
 
-    clientsTbody.innerHTML = clients.map(c => `
-      <tr>
-        <td><b>${escapeHtml(c.name)}</b></td>
-        <td>${c.phone ? escapeHtml(c.phone) : '<span style="color:var(--text-muted)">Sem número</span>'}</td>
-        <td><code>${escapeHtml(c.instanceName)}</code></td>
-        <td>
-          <button class="btn btn-danger" onclick="deleteClient('${c.id}')" style="padding: 4px 10px; font-size: 0.8rem;">
-            🗑️ Excluir
-          </button>
-        </td>
-      </tr>
-    `).join('');
+    clientsTbody.innerHTML = clients.map(c => {
+      const tag = c.autoDiscovered 
+        ? `<span style="font-size: 0.7rem; background: rgba(59,130,246,0.2); color: #60a5fa; padding: 2px 6px; border-radius: 4px;">EVO Sync</span>`
+        : `<span style="font-size: 0.7rem; background: rgba(16,185,129,0.2); color: #34d399; padding: 2px 6px; border-radius: 4px;">Manual</span>`;
+
+      return `
+        <tr>
+          <td><b>${escapeHtml(c.name)}</b></td>
+          <td>${c.phone ? escapeHtml(c.phone) : '<span style="color:var(--text-muted)">Sem número</span>'}</td>
+          <td><code>${escapeHtml(c.instanceName)}</code></td>
+          <td>${tag}</td>
+          <td>
+            <button class="btn btn-danger" onclick="deleteClient('${c.id}')" style="padding: 4px 10px; font-size: 0.8rem;">
+              🗑️ Excluir
+            </button>
+          </td>
+        </tr>
+      `;
+    }).join('');
   }
 
-  // Renderiza Tabela de Servidores EVO
   function renderServersTable(servers) {
     if (!servers || servers.length === 0) {
       serversTbody.innerHTML = `<tr><td colspan="4" style="text-align: center; color: var(--text-muted);">Nenhum servidor cadastrado.</td></tr>`;
@@ -220,12 +249,10 @@ document.addEventListener('DOMContentLoaded', () => {
     settingPrimaryColorPicker.value = settings.primaryColor || '#059669';
   }
 
-  // Sincroniza cor picker com campo texto
   settingPrimaryColorPicker.addEventListener('input', (e) => {
     settingPrimaryColor.value = e.target.value;
   });
 
-  // Criar Servidor
   btnCreateServer.addEventListener('click', () => {
     const name = serverNameInput.value.trim();
     const url = serverUrlInput.value.trim();
@@ -256,38 +283,48 @@ document.addEventListener('DOMContentLoaded', () => {
       });
   });
 
-  // Criar Cliente
   btnCreateClient.addEventListener('click', () => {
     const name = clientNameInput.value.trim();
     const phone = clientPhoneInput.value.trim();
     const serverId = clientServerSelect.value;
     const instanceName = clientInstanceInput.value.trim();
+    const createInEVO = clientCreateInEvoCheck.checked;
 
     if (!name || !serverId || !instanceName) {
       alert('Preencha o nome do cliente, selecione o servidor e informe a instância.');
       return;
     }
 
+    btnCreateClient.disabled = true;
+    btnCreateClient.textContent = 'Criando...';
+
     fetch('/api/admin/clients', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, phone, serverId, instanceName })
+      body: JSON.stringify({ name, phone, serverId, instanceName, createInEVO })
     })
       .then(res => res.json())
       .then(data => {
+        btnCreateClient.disabled = false;
+        btnCreateClient.textContent = '➕ Cadastrar Cliente';
+
         if (data.ok) {
           clientNameInput.value = '';
           clientPhoneInput.value = '';
           clientInstanceInput.value = '';
+          clientCreateInEvoCheck.checked = false;
           loadOverviewData();
           alert('Cliente cadastrado com sucesso!');
         } else {
           alert(data.error || 'Erro ao cadastrar cliente');
         }
+      })
+      .catch(() => {
+        btnCreateClient.disabled = false;
+        btnCreateClient.textContent = '➕ Cadastrar Cliente';
       });
   });
 
-  // Salvar Instância Master de Alertas
   btnSaveMaster.addEventListener('click', () => {
     const serverId = masterServerSelect.value;
     const instanceName = masterInstanceInput.value.trim();
@@ -301,17 +338,14 @@ document.addEventListener('DOMContentLoaded', () => {
     })
       .then(res => res.json())
       .then(data => {
-        if (data.ok) {
-          alert('Configurações de alerta master salvas com sucesso!');
-        }
+        if (data.ok) alert('Configurações de alerta master salvas!');
       });
   });
 
-  // Testar Alerta Manual
   btnTestAlert.addEventListener('click', () => {
     const testPhone = testPhoneInput.value.trim();
     if (!testPhone) {
-      alert('Informe um número de telefone com DDD para receber o teste.');
+      alert('Informe um número de telefone com DDD.');
       return;
     }
 
@@ -327,20 +361,15 @@ document.addEventListener('DOMContentLoaded', () => {
       .then(data => {
         btnTestAlert.disabled = false;
         btnTestAlert.textContent = 'Enviar Teste';
-        if (data.ok) {
-          alert(data.message);
-        } else {
-          alert(data.error || 'Erro ao enviar alerta de teste.');
-        }
+        if (data.ok) alert(data.message);
+        else alert(data.error || 'Erro ao enviar alerta.');
       })
       .catch(() => {
         btnTestAlert.disabled = false;
         btnTestAlert.textContent = 'Enviar Teste';
-        alert('Erro ao comunicar com o servidor.');
       });
   });
 
-  // Salvar Personalização White-Label
   btnSaveSettings.addEventListener('click', () => {
     const agencyName = settingAgencyName.value.trim();
     const logoUrl = settingLogoUrl.value.trim();
@@ -354,13 +383,10 @@ document.addEventListener('DOMContentLoaded', () => {
     })
       .then(res => res.json())
       .then(data => {
-        if (data.ok) {
-          alert('Configurações de marca salvas com sucesso!');
-        }
+        if (data.ok) alert('Configurações de marca salvas com sucesso!');
       });
   });
 
-  // Funções Globais (Excluir e Copiar)
   window.copyLink = function(link) {
     navigator.clipboard.writeText(link).then(() => {
       alert('Link copiado para a área de transferência!');
