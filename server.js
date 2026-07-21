@@ -53,7 +53,7 @@ function saveDB(data) {
 }
 
 // ----------------------------------------------------
-// ADAPTADOR UNIVERSAL EVOLUTION API (v1 e v2)
+// ADAPTADOR UNIVERSAL EVOLUTION API (v1, v2 & Evolution Go)
 // ----------------------------------------------------
 
 async function evoFetch(url, options = {}) {
@@ -74,100 +74,203 @@ async function evoFetch(url, options = {}) {
   }
 }
 
-// 1. Obter Status da Conexão
-async function getEVOStatus(server, instanceName) {
+// Helper para buscar instâncias remotas (Suporte a Evolution API Node & Evolution Go)
+async function fetchServerInstances(server) {
+  if (!server || !server.url || !server.apiKey) return [];
+  const cleanUrl = server.url.replace(/\/$/, '');
+
+  // 1. Tenta endpoint padrão v1/v2 Baileys (/instance/fetchInstances)
+  let res = await evoFetch(`${cleanUrl}/instance/fetchInstances`, {
+    headers: { 'apikey': server.apiKey }
+  });
+
+  if (res.ok && Array.isArray(res.data)) {
+    return res.data.map(item => ({
+      name: item.instance?.instanceName || item.name || item.instanceName || 'Instância',
+      status: item.instance?.status || item.instance?.state || item.status || (item.connected ? 'open' : 'close'),
+      token: item.token || item.instance?.token || ''
+    }));
+  }
+
+  // 2. Tenta endpoint do Evolution Go (/instance/all)
+  res = await evoFetch(`${cleanUrl}/instance/all`, {
+    headers: { 'apikey': server.apiKey }
+  });
+
+  if (res.ok && (Array.isArray(res.data) || Array.isArray(res.data?.response))) {
+    const list = Array.isArray(res.data) ? res.data : res.data.response;
+    return list.map(item => ({
+      name: item.name || item.instanceName || 'Instância',
+      status: item.connected ? 'open' : 'close',
+      token: item.token || ''
+    }));
+  }
+
+  // 3. Tenta /instance/fetch (Variação do Evolution Go)
+  res = await evoFetch(`${cleanUrl}/instance/fetch`, {
+    headers: { 'apikey': server.apiKey }
+  });
+
+  if (res.ok && (Array.isArray(res.data) || Array.isArray(res.data?.response))) {
+    const list = Array.isArray(res.data) ? res.data : res.data.response;
+    return list.map(item => ({
+      name: item.name || item.instanceName || 'Instância',
+      status: item.connected ? 'open' : 'close',
+      token: item.token || ''
+    }));
+  }
+
+  return [];
+}
+
+// 1. Obter Status da Conexão (v1, v2 e Go)
+async function getEVOStatus(server, instanceName, clientEvoToken = '') {
   if (!server || !server.url || !server.apiKey) {
     return { status: 'DISCONNECTED', raw: 'Servidor EVO não configurado' };
   }
 
   const cleanUrl = server.url.replace(/\/$/, '');
-  const endpoint = `${cleanUrl}/instance/connectionState/${instanceName}`;
 
-  const res = await evoFetch(endpoint, {
+  // Tenta endpoint padrão v1/v2 (/instance/connectionState/:name)
+  let res = await evoFetch(`${cleanUrl}/instance/connectionState/${instanceName}`, {
     headers: { 'apikey': server.apiKey }
   });
 
-  if (!res.ok) {
-    return { status: 'DISCONNECTED', raw: res.error || res.data };
+  if (res.ok) {
+    const stateData = res.data?.instance?.state || res.data?.instance?.status || res.data?.state || res.data?.status;
+    if (stateData === 'open' || stateData === 'connected') {
+      return {
+        status: 'CONNECTED',
+        phone: res.data?.instance?.owner || res.data?.owner || '',
+        profileName: res.data?.instance?.profileName || res.data?.profileName || ''
+      };
+    } else if (stateData === 'connecting') {
+      return { status: 'CONNECTING' };
+    } else {
+      return { status: 'DISCONNECTED' };
+    }
   }
 
-  const stateData = res.data?.instance?.state || res.data?.instance?.status || res.data?.state || res.data?.status;
+  // Suporte a Evolution Go: tenta buscar status via /instance/status ou /instance/all
+  const activeKey = clientEvoToken || server.apiKey;
+  res = await evoFetch(`${cleanUrl}/instance/status`, {
+    headers: { 'apikey': activeKey }
+  });
 
-  if (stateData === 'open' || stateData === 'connected') {
+  if (res.ok && res.data?.data) {
+    const isConnected = res.data.data.Connected || res.data.data.LoggedIn;
     return {
-      status: 'CONNECTED',
-      phone: res.data?.instance?.owner || res.data?.owner || '',
-      profileName: res.data?.instance?.profileName || res.data?.profileName || ''
+      status: isConnected ? 'CONNECTED' : 'DISCONNECTED',
+      phone: res.data.data.Jid || '',
+      profileName: res.data.data.Name || ''
     };
-  } else if (stateData === 'connecting') {
-    return { status: 'CONNECTING' };
-  } else {
-    return { status: 'DISCONNECTED' };
   }
+
+  // Fallback para Evolution Go: busca a lista geral /instance/all
+  const allInstances = await fetchServerInstances(server);
+  const found = allInstances.find(i => i.name === instanceName);
+  if (found) {
+    return { status: found.status === 'open' ? 'CONNECTED' : 'DISCONNECTED' };
+  }
+
+  return { status: 'DISCONNECTED' };
 }
 
-// 2. Obter QR Code
-async function getEVOQRCode(server, instanceName) {
+// 2. Obter QR Code (v1, v2 e Go)
+async function getEVOQRCode(server, instanceName, clientEvoToken = '') {
   if (!server || !server.url || !server.apiKey) {
     return { ok: false, message: 'Servidor EVO não configurado' };
   }
 
   const cleanUrl = server.url.replace(/\/$/, '');
-  const endpoint = `${cleanUrl}/instance/connect/${instanceName}`;
 
-  const res = await evoFetch(endpoint, {
+  // Tenta endpoint v1/v2 (/instance/connect/:name)
+  let res = await evoFetch(`${cleanUrl}/instance/connect/${instanceName}`, {
     headers: { 'apikey': server.apiKey }
   });
 
-  if (!res.ok) {
-    return { ok: false, message: res.data?.message || 'Falha ao buscar QR Code na EVO' };
+  if (res.ok) {
+    let qrCode = res.data?.code || res.data?.base64 || res.data?.qrcode?.base64 || res.data?.qrcode;
+    let pairingCode = res.data?.pairingCode || null;
+    if (qrCode && !qrCode.startsWith('data:image')) {
+      qrCode = `data:image/png;base64,${qrCode}`;
+    }
+    return { ok: true, qrCode, pairingCode };
   }
 
-  let qrCode = res.data?.code || res.data?.base64 || res.data?.qrcode?.base64 || res.data?.qrcode;
-  let pairingCode = res.data?.pairingCode || null;
+  // Evolution Go: tenta /instance/qr usando o token da instância ou apiKey
+  const activeKey = clientEvoToken || server.apiKey;
+  res = await evoFetch(`${cleanUrl}/instance/qr`, {
+    headers: { 'apikey': activeKey }
+  });
 
-  if (qrCode && !qrCode.startsWith('data:image')) {
-    qrCode = `data:image/png;base64,${qrCode}`;
+  if (res.ok) {
+    let qrCode = res.data?.qrcode || res.data?.code || res.data?.base64 || res.data?.data?.qrcode;
+    let pairingCode = res.data?.pairingCode || null;
+    if (qrCode && !qrCode.startsWith('data:image')) {
+      qrCode = `data:image/png;base64,${qrCode}`;
+    }
+    return { ok: true, qrCode, pairingCode };
   }
 
-  return { ok: true, qrCode, pairingCode };
+  return { ok: false, message: res.data?.message || res.data?.error || 'Falha ao buscar QR Code' };
 }
 
 // 3. Gerar Código de Pareamento
-async function getEVOPairingCode(server, instanceName, phoneNumber) {
+async function getEVOPairingCode(server, instanceName, phoneNumber, clientEvoToken = '') {
   if (!server || !server.url || !server.apiKey) {
     return { ok: false, message: 'Servidor EVO não configurado' };
   }
 
   const cleanUrl = server.url.replace(/\/$/, '');
-  const endpoint = `${cleanUrl}/instance/connect/${instanceName}?number=${phoneNumber.replace(/\D/g, '')}`;
+  const activeKey = clientEvoToken || server.apiKey;
+  const cleanPhone = phoneNumber.replace(/\D/g, '');
 
-  const res = await evoFetch(endpoint, {
-    method: 'GET',
+  let res = await evoFetch(`${cleanUrl}/instance/connect/${instanceName}?number=${cleanPhone}`, {
+    headers: { 'apikey': server.apiKey }
+  });
+
+  if (res.ok) {
+    const code = res.data?.pairingCode || res.data?.code;
+    return { ok: true, pairingCode: code };
+  }
+
+  // Evolution Go: POST /instance/pair
+  res = await evoFetch(`${cleanUrl}/instance/pair`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'apikey': activeKey },
+    body: JSON.stringify({ phone: cleanPhone })
+  });
+
+  if (res.ok) {
+    const code = res.data?.pairingCode || res.data?.code || res.data?.data?.code;
+    return { ok: true, pairingCode: code };
+  }
+
+  return { ok: false, message: 'Erro ao gerar código de pareamento' };
+}
+
+// 4. Logout / Desconectar
+async function logoutEVOInstance(server, instanceName, clientEvoToken = '') {
+  if (!server || !server.url || !server.apiKey) {
+    return { ok: false, message: 'Servidor EVO não configurado' };
+  }
+
+  const cleanUrl = server.url.replace(/\/$/, '');
+  const activeKey = clientEvoToken || server.apiKey;
+
+  let res = await evoFetch(`${cleanUrl}/instance/logout/${instanceName}`, {
+    method: 'DELETE',
     headers: { 'apikey': server.apiKey }
   });
 
   if (!res.ok) {
-    return { ok: false, message: res.data?.message || 'Erro ao gerar código de pareamento' };
+    // Evolution Go: DELETE /instance/logout
+    res = await evoFetch(`${cleanUrl}/instance/logout`, {
+      method: 'DELETE',
+      headers: { 'apikey': activeKey }
+    });
   }
-
-  const code = res.data?.pairingCode || res.data?.code;
-  return { ok: true, pairingCode: code };
-}
-
-// 4. Logout / Desconectar
-async function logoutEVOInstance(server, instanceName) {
-  if (!server || !server.url || !server.apiKey) {
-    return { ok: false, message: 'Servidor EVO não configurado' };
-  }
-
-  const cleanUrl = server.url.replace(/\/$/, '');
-  const endpoint = `${cleanUrl}/instance/logout/${instanceName}`;
-
-  const res = await evoFetch(endpoint, {
-    method: 'DELETE',
-    headers: { 'apikey': server.apiKey }
-  });
 
   return { ok: res.ok, data: res.data };
 }
@@ -177,66 +280,41 @@ async function sendEVOMessage(server, instanceName, destinationPhone, text) {
   if (!server || !server.url || !server.apiKey) return false;
 
   const cleanUrl = server.url.replace(/\/$/, '');
-  const endpoint = `${cleanUrl}/message/sendText/${instanceName}`;
+  const cleanPhone = destinationPhone.replace(/\D/g, '');
 
   const payload = {
-    number: destinationPhone.replace(/\D/g, ''),
+    number: cleanPhone,
     options: { delay: 1200, presence: 'composing' },
     textMessage: { text },
     text
   };
 
-  const res = await evoFetch(endpoint, {
+  const res = await evoFetch(`${cleanUrl}/message/sendText/${instanceName}`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'apikey': server.apiKey
-    },
+    headers: { 'Content-Type': 'application/json', 'apikey': server.apiKey },
     body: JSON.stringify(payload)
   });
 
   return res.ok;
 }
 
-// 6. Listar Instâncias Existentes no Servidor EVO
-async function fetchServerInstances(server) {
-  if (!server || !server.url || !server.apiKey) return [];
-  const cleanUrl = server.url.replace(/\/$/, '');
-  const endpoint = `${cleanUrl}/instance/fetchInstances`;
-
-  const res = await evoFetch(endpoint, {
-    headers: { 'apikey': server.apiKey }
-  });
-
-  if (!res.ok || !Array.isArray(res.data)) return [];
-
-  return res.data.map(item => ({
-    name: item.instance?.instanceName || item.name || item.instanceName || 'Instância',
-    status: item.instance?.status || item.instance?.state || item.status || 'unknown'
-  }));
-}
-
-// 7. Criar Instância Direto na Evolution API (Vice-Versa)
+// 6. Criar Instância na Evolution API / Evolution Go
 async function createEVOInstance(server, instanceName) {
   if (!server || !server.url || !server.apiKey) {
     return { ok: false, message: 'Servidor EVO não configurado' };
   }
 
   const cleanUrl = server.url.replace(/\/$/, '');
-  const endpoint = `${cleanUrl}/instance/create`;
-
   const payload = {
     instanceName: instanceName,
+    name: instanceName,
     qrcode: true,
     integration: 'WHATSAPP-BAILEYS'
   };
 
-  const res = await evoFetch(endpoint, {
+  const res = await evoFetch(`${cleanUrl}/instance/create`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'apikey': server.apiKey
-    },
+    headers: { 'Content-Type': 'application/json', 'apikey': server.apiKey },
     body: JSON.stringify(payload)
   });
 
@@ -244,7 +322,7 @@ async function createEVOInstance(server, instanceName) {
 }
 
 // ----------------------------------------------------
-// SINCRONIZAÇÃO AUTOMÁTICA DE INSTÂNCIAS (SINCRONIA TOTAL)
+// SINCRONIZAÇÃO AUTOMÁTICA DE INSTÂNCIAS
 // ----------------------------------------------------
 async function syncAllInstances() {
   const db = loadDB();
@@ -256,11 +334,9 @@ async function syncAllInstances() {
     for (let remoteInst of remoteInstances) {
       if (!remoteInst.name) continue;
 
-      // Verifica se a instância já está cadastrada no EvoConnect
       const exists = db.clients.find(c => c.serverId === server.id && c.instanceName === remoteInst.name);
 
       if (!exists) {
-        // Auto-cria o cliente no EvoConnect
         const newClient = {
           id: `client-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
           name: remoteInst.name,
@@ -268,6 +344,7 @@ async function syncAllInstances() {
           serverId: server.id,
           instanceName: remoteInst.name,
           token: `token-${Math.random().toString(36).substring(2, 10)}${Date.now().toString(36)}`,
+          evoGoToken: remoteInst.token || '',
           lastStatus: remoteInst.status === 'open' ? 'open' : 'close',
           lastAlertSentAt: null,
           autoDiscovered: true
@@ -275,6 +352,11 @@ async function syncAllInstances() {
 
         db.clients.push(newClient);
         addedCount++;
+      } else {
+        // Atualiza o token do Evolution Go se disponível
+        if (remoteInst.token && !exists.evoGoToken) {
+          exists.evoGoToken = remoteInst.token;
+        }
       }
     }
   }
@@ -287,10 +369,9 @@ async function syncAllInstances() {
   return { addedCount, totalClients: db.clients.length };
 }
 
-// Auto-sincronização a cada 2 minutos
 setInterval(syncAllInstances, 120000);
 
-// Monitor de Alertas em Segundo Plano (cada 45s)
+// Monitor de Alertas em Segundo Plano
 setInterval(async () => {
   try {
     const db = loadDB();
@@ -308,7 +389,7 @@ setInterval(async () => {
       const clientServer = db.servers.find(s => s.id === client.serverId);
       if (!clientServer) continue;
 
-      const statusRes = await getEVOStatus(clientServer, client.instanceName);
+      const statusRes = await getEVOStatus(clientServer, client.instanceName, client.evoGoToken);
       const previousStatus = client.lastStatus;
       client.lastStatus = statusRes.status === 'CONNECTED' ? 'open' : 'close';
 
@@ -342,9 +423,7 @@ app.get('/api/client/config/:token', (req, res) => {
   const db = loadDB();
   const client = db.clients.find(c => c.token === req.params.token);
 
-  if (!client) {
-    return res.status(404).json({ error: 'Link de cliente inválido ou expirado.' });
-  }
+  if (!client) return res.status(404).json({ error: 'Link de cliente inválido.' });
 
   return res.json({
     agencyName: db.settings.agencyName || 'EvoConnect',
@@ -358,13 +437,12 @@ app.get('/api/client/config/:token', (req, res) => {
 app.get('/api/client/status/:token', async (req, res) => {
   const db = loadDB();
   const client = db.clients.find(c => c.token === req.params.token);
-
   if (!client) return res.status(404).json({ error: 'Cliente não encontrado' });
 
   const server = db.servers.find(s => s.id === client.serverId);
   if (!server) return res.status(400).json({ error: 'Servidor EVO não configurado' });
 
-  const result = await getEVOStatus(server, client.instanceName);
+  const result = await getEVOStatus(server, client.instanceName, client.evoGoToken);
   client.lastStatus = result.status === 'CONNECTED' ? 'open' : 'close';
   saveDB(db);
 
@@ -377,7 +455,7 @@ app.get('/api/client/connect/:token', async (req, res) => {
   if (!client) return res.status(404).json({ error: 'Cliente não encontrado' });
 
   const server = db.servers.find(s => s.id === client.serverId);
-  const qrResult = await getEVOQRCode(server, client.instanceName);
+  const qrResult = await getEVOQRCode(server, client.instanceName, client.evoGoToken);
   return res.json(qrResult);
 });
 
@@ -388,7 +466,7 @@ app.post('/api/client/pairing-code/:token', async (req, res) => {
   if (!client) return res.status(404).json({ error: 'Cliente não encontrado' });
 
   const server = db.servers.find(s => s.id === client.serverId);
-  const pairingResult = await getEVOPairingCode(server, client.instanceName, phone || client.phone);
+  const pairingResult = await getEVOPairingCode(server, client.instanceName, phone || client.phone, client.evoGoToken);
   return res.json(pairingResult);
 });
 
@@ -398,7 +476,7 @@ app.post('/api/client/logout/:token', async (req, res) => {
   if (!client) return res.status(404).json({ error: 'Cliente não encontrado' });
 
   const server = db.servers.find(s => s.id === client.serverId);
-  const logoutRes = await logoutEVOInstance(server, client.instanceName);
+  const logoutRes = await logoutEVOInstance(server, client.instanceName, client.evoGoToken);
   client.lastStatus = 'close';
   saveDB(db);
 
@@ -406,7 +484,7 @@ app.post('/api/client/logout/:token', async (req, res) => {
 });
 
 // ----------------------------------------------------
-// ROTAS DE INTEGRAÇÃO WEBHOOK / N8N / TYPEBOT (CRIÇÃO AUTOMÁTICA E RETORNO DE LINK)
+// ROTAS DE INTEGRAÇÃO WEBHOOK / N8N / TYPEBOT
 // ----------------------------------------------------
 app.post('/api/v1/auto-create-client', async (req, res) => {
   const { name, phone, serverId, instanceName, createInEVO } = req.body;
@@ -416,18 +494,15 @@ app.post('/api/v1/auto-create-client', async (req, res) => {
     return res.status(400).json({ error: 'name e instanceName são obrigatórios' });
   }
 
-  // Seleciona servidor ou usa o primeiro cadastrado
   const targetServer = serverId ? db.servers.find(s => s.id === serverId) : db.servers[0];
   if (!targetServer) {
-    return res.status(400).json({ error: 'Nenhum servidor Evolution API cadastrado no EvoConnect.' });
+    return res.status(400).json({ error: 'Nenhum servidor Evolution API cadastrado.' });
   }
 
-  // Se solicitado criar também na EVO
   if (createInEVO) {
     await createEVOInstance(targetServer, instanceName);
   }
 
-  // Verifica se o cliente já existe
   let client = db.clients.find(c => c.serverId === targetServer.id && c.instanceName === instanceName);
 
   if (!client) {
@@ -484,7 +559,7 @@ app.get('/api/admin/overview', async (req, res) => {
       const server = db.servers.find(s => s.id === client.serverId);
       let status = 'DISCONNECTED';
       if (server) {
-        const st = await getEVOStatus(server, client.instanceName);
+        const st = await getEVOStatus(server, client.instanceName, client.evoGoToken);
         status = st.status;
       }
       if (status === 'CONNECTED') connectedCount++;
@@ -510,7 +585,6 @@ app.get('/api/admin/overview', async (req, res) => {
   });
 });
 
-// Forçar Sincronização Manual de todas as instâncias da EVO
 app.post('/api/admin/sync-instances', async (req, res) => {
   const syncResult = await syncAllInstances();
   res.json({ ok: true, ...syncResult });
@@ -568,7 +642,6 @@ app.post('/api/admin/clients', async (req, res) => {
 
   const server = db.servers.find(s => s.id === serverId);
 
-  // Se solicitou criar também direto na Evolution API
   if (createInEVO && server) {
     await createEVOInstance(server, instanceName);
   }
