@@ -89,7 +89,7 @@ async function fetchServerInstances(server) {
   if (res.ok && (Array.isArray(res.data) || Array.isArray(res.data?.response))) {
     const list = Array.isArray(res.data) ? res.data : res.data.response;
     return list
-      .filter(item => typeof item === 'object' && item.name)
+      .filter(item => typeof item === 'object' && item && item.name)
       .map(item => ({
         name: item.name || item.instanceName || 'Instância',
         status: item.connected ? 'open' : 'close',
@@ -104,7 +104,7 @@ async function fetchServerInstances(server) {
   if (res.ok && (Array.isArray(res.data) || Array.isArray(res.data?.response))) {
     const list = Array.isArray(res.data) ? res.data : res.data.response;
     return list
-      .filter(item => typeof item === 'object' && item.name)
+      .filter(item => typeof item === 'object' && item && item.name)
       .map(item => ({
         name: item.name || item.instanceName || 'Instância',
         status: item.connected ? 'open' : 'close',
@@ -173,7 +173,7 @@ async function getEVOStatus(server, instanceName, clientEvoToken = '') {
 
   // Fallback para Evolution Go: busca a lista geral /instance/all
   const allInstances = await fetchServerInstances(server);
-  const found = allInstances.find(i => i.name === instanceName);
+  const found = allInstances.find(i => String(i.name).toLowerCase() === String(instanceName).toLowerCase());
   if (found) {
     return { status: found.status === 'open' ? 'CONNECTED' : 'DISCONNECTED' };
   }
@@ -264,7 +264,6 @@ async function logoutEVOInstance(server, instanceName, clientEvoToken = '') {
   const cleanUrl = server.url.replace(/\/$/, '');
   const activeKey = clientEvoToken || server.apiKey;
 
-  // Evolution Go: DELETE /instance/logout
   let res = await evoFetch(`${cleanUrl}/instance/logout`, {
     method: 'DELETE',
     headers: { 'apikey': activeKey }
@@ -339,15 +338,23 @@ async function syncAllInstances() {
     for (let remoteInst of remoteInstances) {
       if (!remoteInst.name) continue;
 
-      const exists = db.clients.find(c => c.serverId === server.id && c.instanceName === remoteInst.name);
+      const cleanRemoteName = String(remoteInst.name).trim();
+
+      // Busca cliente existente no mesmo servidor ou por nome de instância
+      let exists = db.clients.find(c => c.serverId === server.id && String(c.instanceName).toLowerCase() === cleanRemoteName.toLowerCase());
+
+      if (!exists) {
+        // Se não encontrou no mesmo servidor, busca em qualquer servidor para evitar duplicidade
+        exists = db.clients.find(c => String(c.instanceName).toLowerCase() === cleanRemoteName.toLowerCase());
+      }
 
       if (!exists) {
         const newClient = {
           id: `client-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-          name: remoteInst.name,
+          name: cleanRemoteName,
           phone: '',
           serverId: server.id,
-          instanceName: remoteInst.name,
+          instanceName: cleanRemoteName,
           token: `token-${Math.random().toString(36).substring(2, 10)}${Date.now().toString(36)}`,
           evoGoToken: remoteInst.token || '',
           lastStatus: remoteInst.status === 'open' ? 'open' : 'close',
@@ -358,8 +365,12 @@ async function syncAllInstances() {
         db.clients.push(newClient);
         addedCount++;
       } else {
+        // Atualiza a associação do servidor e token Go caso necessário
         if (remoteInst.token && !exists.evoGoToken) {
           exists.evoGoToken = remoteInst.token;
+        }
+        if (exists.serverId !== server.id && remoteInst.token) {
+          exists.serverId = server.id;
         }
       }
     }
