@@ -13,18 +13,18 @@ services:
       - evoconnect_data:/app/data
     networks:
       - server3net
-    labels:
-      - "traefik.enable=true"
-      - "traefik.docker.network=server3net"
-      - "traefik.http.routers.evoconnect.rule=Host(`painel.dmove.com.br`)"
-      - "traefik.http.services.evoconnect.loadbalancer.server.port=3000"
     deploy:
       restart_policy:
         condition: on-failure
       labels:
         - "traefik.enable=true"
         - "traefik.docker.network=server3net"
+        - "traefik.http.routers.evoconnect.entrypoints=websecure"
+        - "traefik.http.routers.evoconnect.priority=1"
         - "traefik.http.routers.evoconnect.rule=Host(`painel.dmove.com.br`)"
+        - "traefik.http.routers.evoconnect.service=evoconnect"
+        - "traefik.http.routers.evoconnect.tls.certresolver=letsencryptresolver"
+        - "traefik.http.services.evoconnect.loadbalancer.passHostHeader=1"
         - "traefik.http.services.evoconnect.loadbalancer.server.port=3000"
 
 volumes:
