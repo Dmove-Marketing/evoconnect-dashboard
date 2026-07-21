@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title id="page-title">Reconectar WhatsApp | EvoConnect</title>
+  <link rel="stylesheet" href="/css/style.css">
+  <link rel="icon" id="favicon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📱</text></svg>">
+</head>
+<body>
+
+  <!-- Navbar da Marca (White-Label) -->
+  <nav class="navbar">
+    <a href="#" class="brand" id="brand-logo-wrapper">
+      <div class="brand-icon" id="brand-icon">📱</div>
+      <span id="brand-name">EvoConnect</span>
+    </a>
+    <div style="font-size: 0.85rem; color: var(--text-muted);">
+      Portal do Cliente
+    </div>
+  </nav>
+
+  <!-- Conteúdo Principal do Cliente -->
+  <main class="container">
+    
+    <!-- Alerta de Token Inválido se o link estiver errado -->
+    <div id="error-screen" class="glass-card" style="display: none; text-align: center; padding: 3rem 1.5rem;">
+      <div style="font-size: 3rem; margin-bottom: 1rem;">⚠️</div>
+      <h2 style="font-family: var(--font-heading); margin-bottom: 0.5rem; color: #ef4444;">Link Inválido ou Inexistente</h2>
+      <p style="color: var(--text-muted); max-width: 500px; margin: 0 auto 1.5rem;">
+        Não encontramos nenhuma conexão correspondente a este link. Verifique a URL ou solicite um novo link ao administrador.
+      </p>
+    </div>
+
+    <!-- Tela Principal do Cliente -->
+    <div id="client-screen" class="glass-card" style="display: none;">
+      
+      <!-- Cabeçalho do Status -->
+      <div class="client-header">
+        <div class="client-info">
+          <h1 id="client-welcome-name">Conexão WhatsApp</h1>
+          <p id="client-instance-info">Instância: <span id="instance-name-display" style="font-weight: 600; color: white;">...</span></p>
+        </div>
+        <div>
+          <div id="status-badge" class="status-badge disconnected">
+            <span class="pulse-dot"></span>
+            <span id="status-text">Verificando...</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- ESTADO 1: CONECTADO 🟢 -->
+      <div id="connected-state" style="display: none; text-align: center; padding: 2rem 1rem;">
+        <div style="width: 80px; height: 80px; background: rgba(16, 185, 129, 0.2); color: #10b981; border: 2px solid #10b981; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 2.5rem; margin: 0 auto 1.5rem; box-shadow: 0 0 25px rgba(16, 185, 129, 0.4);">
+          ✓
+        </div>
+        <h2 style="font-family: var(--font-heading); font-size: 1.6rem; margin-bottom: 0.5rem;">WhatsApp Conectado! 🎉</h2>
+        <p style="color: var(--text-muted); max-width: 500px; margin: 0 auto 1.5rem; line-height: 1.5;">
+          Seu número de WhatsApp está sincronizado e operando normalmente. Não é necessário realizar nenhuma ação no momento.
+        </p>
+
+        <div style="background: rgba(15, 23, 42, 0.5); padding: 1rem 1.5rem; border-radius: 12px; display: inline-flex; gap: 1.5rem; border: 1px solid var(--border-color); text-align: left; margin-bottom: 1.5rem;">
+          <div>
+            <div style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase;">Número Vinculado</div>
+            <div id="connected-phone-display" style="font-weight: 600; font-size: 0.95rem;">-</div>
+          </div>
+          <div>
+            <div style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase;">Saúde do Sinal</div>
+            <div style="font-weight: 600; font-size: 0.95rem; color: #10b981;">Estável (100%)</div>
+          </div>
+        </div>
+
+        <div>
+          <button id="btn-force-reconnect" class="btn btn-secondary" style="font-size: 0.85rem;">
+            🔄 Desconectar e Ler Novo QR Code
+          </button>
+        </div>
+      </div>
+
+      <!-- ESTADO 2: DESCONECTADO 🔴 (Ações de Reconexão) -->
+      <div id="disconnected-state" style="display: none;">
+        
+        <!-- Toggle entre QR Code e Pairing Code -->
+        <div style="display: flex; justify-content: center; gap: 1rem; margin-bottom: 2rem;">
+          <button id="tab-qr" class="btn btn-primary" style="flex: 1; max-width: 220px;">
+            📷 Ler QR Code
+          </button>
+          <button id="tab-pairing" class="btn btn-secondary" style="flex: 1; max-width: 220px;">
+            🔢 Código de Pareamento
+          </button>
+        </div>
+
+        <div class="action-grid">
+          
+          <!-- Lado Esquerdo: Área do QR Code / Pairing -->
+          <div>
+            
+            <!-- MODO 1: QR CODE -->
+            <div id="qr-section">
+              <div class="qr-container">
+                <div id="qr-loading" style="display: flex; flex-direction: column; align-items: center; gap: 1rem;">
+                  <div style="width: 40px; height: 40px; border: 3px solid rgba(255,255,255,0.1); border-top-color: var(--primary-color); border-radius: 50%; animation: spin 1s infinite linear;"></div>
+                  <p style="color: var(--text-muted); font-size: 0.9rem;">Gerando QR Code atualizado...</p>
+                </div>
+
+                <div id="qr-wrapper" class="qr-image-wrapper" style="display: none;">
+                  <div class="scan-line"></div>
+                  <img id="qr-image" src="" alt="QR Code WhatsApp">
+                </div>
+
+                <div id="qr-timer" style="margin-top: 1rem; font-size: 0.8rem; color: var(--text-muted); display: none;">
+                  Atualizando QR Code em <span id="timer-seconds" style="color: var(--primary-color); font-weight: 700;">15</span>s
+                </div>
+              </div>
+            </div>
+
+            <!-- MODO 2: PAIRING CODE -->
+            <div id="pairing-section" style="display: none;">
+              <div class="qr-container" style="padding: 2rem 1.5rem; text-align: center;">
+                <h3 style="font-family: var(--font-heading); margin-bottom: 0.5rem;">Parear via Telefone</h3>
+                <p style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 1.5rem;">
+                  Digite o número do seu celular com DDD para gerar um código de 8 dígitos.
+                </p>
+
+                <div class="form-group" style="text-align: left; max-width: 320px; margin: 0 auto 1rem;">
+                  <label for="pairing-phone">Seu Telefone (com DDD)</label>
+                  <input type="text" id="pairing-phone" class="form-control" placeholder="Ex: 11999998888">
+                </div>
+
+                <button id="btn-request-pairing" class="btn btn-primary" style="width: 100%; max-width: 320px; margin: 0 auto;">
+                  Gerar Código de Pareamento
+                </button>
+
+                <div id="pairing-result" style="display: none; margin-top: 1.5rem;">
+                  <div style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.4rem;">CÓDIGO DE PAREAMENTO:</div>
+                  <div id="pairing-code-display" style="font-family: var(--font-heading); font-size: 2.2rem; font-weight: 800; letter-spacing: 4px; color: #34d399; background: rgba(16, 185, 129, 0.15); padding: 0.75rem 1.5rem; border-radius: 12px; border: 1px dashed #10b981; display: inline-block;">
+                    --------
+                  </div>
+                </div>
+              </div>
+            </div>
+
+          </div>
+
+          <!-- Lado Direito: Instruções em Vídeo/Passos -->
+          <div class="instructions-list">
+            <h3 style="font-family: var(--font-heading); font-size: 1.2rem; margin-bottom: 0.5rem;">Como Reconectar:</h3>
+
+            <div class="instruction-item">
+              <div class="step-number">1</div>
+              <div class="step-text">
+                <h4>Abra seu WhatsApp</h4>
+                <p>No celular onde você utiliza a conta comercial, abra o aplicativo WhatsApp.</p>
+              </div>
+            </div>
+
+            <div class="instruction-item">
+              <div class="step-number">2</div>
+              <div class="step-text">
+                <h4>Acesse Aparelhos Conectados</h4>
+                <p>No Android toque nos 3 pontinhos (superior direito). No iPhone acesse <b>Configurações</b> > <b>Aparelhos Conectados</b>.</p>
+              </div>
+            </div>
+
+            <div class="instruction-item">
+              <div class="step-number">3</div>
+              <div class="step-text">
+                <h4>Conectar um Aparelho</h4>
+                <p>Toque no botão <b>"Conectar um aparelho"</b> e aponte a câmera para o QR Code ao lado (ou insira o Código de Pareamento).</p>
+              </div>
+            </div>
+
+            <div style="background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.3); border-radius: 12px; padding: 1rem; margin-top: 0.5rem; font-size: 0.85rem; color: #fbbf24;">
+              💡 <b>Dica:</b> Assim que o WhatsApp ler o código, esta tela será atualizada automaticamente em alguns segundos.
+            </div>
+          </div>
+
+        </div>
+
+      </div>
+
+    </div>
+
+  </main>
+
+  <footer>
+    <span id="footer-brand">EvoConnect</span> &copy; 2026 - Todos os direitos reservados.
+  </footer>
+
+  <style>
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+  </style>
+
+  <script src="/js/client.js"></script>
+</body>
+</html>

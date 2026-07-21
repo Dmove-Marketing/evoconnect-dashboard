@@ -1,0 +1,21 @@
+version: '3.8'
+
+services:
+  evoconnect:
+    image: node:18-alpine
+    working_dir: /app
+    command: sh -c "npm install && node server.js"
+    ports:
+      - "3000:3000"
+    environment:
+      - PORT=3000
+      - NODE_ENV=production
+      - BASE_URL=https://meupainel.seudominio.com.br
+    volumes:
+      - evoconnect_data:/app/data
+    deploy:
+      restart_policy:
+        condition: on-failure
+
+volumes:
+  evoconnect_data:

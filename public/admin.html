@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Painel Administrativo | EvoConnect</title>
+  <link rel="stylesheet" href="/css/style.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>⚙️</text></svg>">
+</head>
+<body>
+
+  <!-- Navbar Admin -->
+  <nav class="navbar">
+    <a href="/admin.html" class="brand">
+      <div class="brand-icon">⚙️</div>
+      <span>EvoConnect <small style="font-size: 0.75rem; color: var(--primary-color); background: rgba(5,150,105,0.2); padding: 2px 8px; border-radius: 20px;">ADMIN</small></span>
+    </a>
+    <div style="display: flex; gap: 1rem; align-items: center;">
+      <a href="/" target="_blank" class="btn btn-secondary" style="font-size: 0.85rem; padding: 0.5rem 1rem;">
+        🔗 Ver Portal do Cliente
+      </a>
+      <button id="btn-logout-admin" class="btn btn-danger" style="font-size: 0.85rem; padding: 0.5rem 1rem; display: none;">
+        Sair
+      </button>
+    </div>
+  </nav>
+
+  <!-- Container Principal -->
+  <main class="container">
+    
+    <!-- Tela de Login do Admin -->
+    <div id="admin-login-card" class="glass-card" style="max-width: 420px; margin: 3rem auto; text-align: center;">
+      <div style="font-size: 2.5rem; margin-bottom: 1rem;">🔐</div>
+      <h2 style="font-family: var(--font-heading); margin-bottom: 0.5rem;">Acesso Administrativo</h2>
+      <p style="color: var(--text-muted); font-size: 0.88rem; margin-bottom: 1.5rem;">
+        Digite a senha de administrador para gerenciar seus servidores da Evolution API e clientes.
+      </p>
+
+      <div class="form-group" style="text-align: left;">
+        <label for="admin-password">Senha de Acesso</label>
+        <input type="password" id="admin-password" class="form-control" placeholder="Senha padrão: admin">
+      </div>
+
+      <button id="btn-admin-login" class="btn btn-primary" style="width: 100%; margin-top: 0.5rem;">
+        Entrar no Painel
+      </button>
+    </div>
+
+    <!-- Conteúdo do Painel de Admin -->
+    <div id="admin-dashboard" style="display: none;">
+      
+      <!-- Abas de Navegação -->
+      <div class="admin-tabs">
+        <button class="tab-btn active" data-tab="tab-overview">📊 Visão Geral</button>
+        <button class="tab-btn" data-tab="tab-clients">👥 Clientes & Instâncias</button>
+        <button class="tab-btn" data-tab="tab-servers">🖥️ Servidores EVO</button>
+        <button class="tab-btn" data-tab="tab-alerts">📢 Instância Master & Alertas</button>
+        <button class="tab-btn" data-tab="tab-settings">🎨 Personalização</button>
+      </div>
+
+      <!-- ABA 1: VISÃO GERAL -->
+      <div id="tab-overview" class="tab-content">
+        
+        <!-- Cards de Estatísticas -->
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1.25rem; margin-bottom: 2rem;">
+          <div class="glass-card" style="padding: 1.5rem;">
+            <div style="font-size: 0.85rem; color: var(--text-muted);">TOTAL DE CLIENTES</div>
+            <div id="stat-total-clients" style="font-family: var(--font-heading); font-size: 2.2rem; font-weight: 800; margin-top: 0.4rem;">0</div>
+          </div>
+          <div class="glass-card" style="padding: 1.5rem;">
+            <div style="font-size: 0.85rem; color: #34d399;">WHATSAPP CONECTADOS</div>
+            <div id="stat-connected" style="font-family: var(--font-heading); font-size: 2.2rem; font-weight: 800; color: #34d399; margin-top: 0.4rem;">0</div>
+          </div>
+          <div class="glass-card" style="padding: 1.5rem;">
+            <div style="font-size: 0.85rem; color: #f87171;">WHATSAPP DESCONECTADOS</div>
+            <div id="stat-disconnected" style="font-family: var(--font-heading); font-size: 2.2rem; font-weight: 800; color: #f87171; margin-top: 0.4rem;">0</div>
+          </div>
+          <div class="glass-card" style="padding: 1.5rem;">
+            <div style="font-size: 0.85rem; color: var(--text-muted);">SERVIDORES EVO</div>
+            <div id="stat-total-servers" style="font-family: var(--font-heading); font-size: 2.2rem; font-weight: 800; margin-top: 0.4rem;">0</div>
+          </div>
+        </div>
+
+        <!-- Tabela de Monitoramento de Clientes ao Vivo -->
+        <div class="glass-card">
+          <h3 style="font-family: var(--font-heading); margin-bottom: 1rem;">Status das Conexões em Tempo Real</h3>
+          
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Cliente</th>
+                <th>Instância</th>
+                <th>Servidor EVO</th>
+                <th>Status</th>
+                <th>Link de Reconexão do Cliente</th>
+              </tr>
+            </thead>
+            <tbody id="overview-clients-tbody">
+              <tr><td colspan="5" style="text-align: center; color: var(--text-muted);">Carregando dados...</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+      </div>
+
+      <!-- ABA 2: CLIENTES & INSTÂNCIAS -->
+      <div id="tab-clients" class="tab-content" style="display: none;">
+        
+        <div style="display: grid; grid-template-columns: 350px 1fr; gap: 2rem;">
+          
+          <!-- Formulário Criar Cliente -->
+          <div class="glass-card">
+            <h3 style="font-family: var(--font-heading); margin-bottom: 1.25rem;">Novo Cliente</h3>
+
+            <div class="form-group">
+              <label for="client-name">Nome do Cliente / Empresa</label>
+              <input type="text" id="client-name" class="form-control" placeholder="Ex: Restaurante Silva">
+            </div>
+
+            <div class="form-group">
+              <label for="client-phone">WhatsApp do Cliente (para alertas)</label>
+              <input type="text" id="client-phone" class="form-control" placeholder="5511999998888">
+            </div>
+
+            <div class="form-group">
+              <label for="client-server-id">Servidor Evolution API</label>
+              <select id="client-server-id" class="form-control">
+                <option value="">Selecione um servidor...</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label for="client-instance-name">Nome da Instância na EVO</label>
+              <input type="text" id="client-instance-name" class="form-control" placeholder="Ex: silva_whatsapp">
+              <small style="color: var(--text-muted); font-size: 0.75rem;">Deve ser o nome exato da instância cadastrada na sua Evolution API.</small>
+            </div>
+
+            <button id="btn-create-client" class="btn btn-primary" style="width: 100%; margin-top: 0.5rem;">
+              ➕ Cadastrar Cliente
+            </button>
+          </div>
+
+          <!-- Tabela de Clientes Cadastrados -->
+          <div class="glass-card">
+            <h3 style="font-family: var(--font-heading); margin-bottom: 1.25rem;">Clientes Cadastrados</h3>
+            
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Cliente</th>
+                  <th>Telefone Alerta</th>
+                  <th>Instância</th>
+                  <th>Ações</th>
+                </tr>
+              </thead>
+              <tbody id="clients-tbody">
+                <tr><td colspan="4" style="text-align: center; color: var(--text-muted);">Nenhum cliente cadastrado.</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+        </div>
+
+      </div>
+
+      <!-- ABA 3: SERVIDORES EVO (Multi-Versão) -->
+      <div id="tab-servers" class="tab-content" style="display: none;">
+        
+        <div style="display: grid; grid-template-columns: 380px 1fr; gap: 2rem;">
+          
+          <!-- Formulário Criar Servidor EVO -->
+          <div class="glass-card">
+            <h3 style="font-family: var(--font-heading); margin-bottom: 1.25rem;">Adicionar Servidor EVO</h3>
+
+            <div class="form-group">
+              <label for="server-name">Apelido do Servidor</label>
+              <input type="text" id="server-name" class="form-control" placeholder="Ex: Servidor 1 - Portainer (v1.8)">
+            </div>
+
+            <div class="form-group">
+              <label for="server-url">URL da Evolution API</label>
+              <input type="text" id="server-url" class="form-control" placeholder="https://evo1.seudominio.com.br">
+            </div>
+
+            <div class="form-group">
+              <label for="server-apikey">Global API Key</label>
+              <input type="password" id="server-apikey" class="form-control" placeholder="API Key global da Evolution">
+            </div>
+
+            <div class="form-group">
+              <label for="server-version">Versão da Evolution API</label>
+              <select id="server-version" class="form-control">
+                <option value="v1">Evolution API v1.x</option>
+                <option value="v2">Evolution API v2.x</option>
+              </select>
+            </div>
+
+            <button id="btn-create-server" class="btn btn-primary" style="width: 100%; margin-top: 0.5rem;">
+              💾 Salvar Servidor EVO
+            </button>
+          </div>
+
+          <!-- Lista de Servidores Cadastrados -->
+          <div class="glass-card">
+            <h3 style="font-family: var(--font-heading); margin-bottom: 1.25rem;">Servidores Evolution API</h3>
+            
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Nome</th>
+                  <th>URL</th>
+                  <th>Versão</th>
+                  <th>Ações</th>
+                </tr>
+              </thead>
+              <tbody id="servers-tbody">
+                <tr><td colspan="4" style="text-align: center; color: var(--text-muted);">Nenhum servidor cadastrado.</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+        </div>
+
+      </div>
+
+      <!-- ABA 4: INSTÂNCIA MASTER & ALERTAS AUTOMÁTICOS -->
+      <div id="tab-alerts" class="tab-content" style="display: none;">
+        
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2rem;">
+          
+          <!-- Configuração da Instância Master -->
+          <div class="glass-card">
+            <h3 style="font-family: var(--font-heading); margin-bottom: 0.5rem;">Instância Master de Alertas</h3>
+            <p style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 1.5rem;">
+              Esta é a sua instância administrativa do WhatsApp que enviará avisos automáticos para o WhatsApp dos clientes quando a conexão deles cair.
+            </p>
+
+            <div class="form-group">
+              <label for="master-server-id">Servidor EVO da Instância Master</label>
+              <select id="master-server-id" class="form-control">
+                <option value="">Selecione o servidor...</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label for="master-instance-name">Nome da Instância Master</label>
+              <input type="text" id="master-instance-name" class="form-control" placeholder="Ex: admin_master_instance">
+            </div>
+
+            <div class="form-group" style="flex-direction: row; align-items: center; gap: 0.75rem; margin-top: 1rem;">
+              <input type="checkbox" id="master-is-enabled" style="width: 20px; height: 20px; accent-color: var(--primary-color);">
+              <label for="master-is-enabled" style="cursor: pointer;">Ativar Alertas Automáticos por WhatsApp</label>
+            </div>
+
+            <button id="btn-save-master" class="btn btn-primary" style="margin-top: 1.5rem;">
+              💾 Salvar Configurações Master
+            </button>
+          </div>
+
+          <!-- Modelo de Mensagem & Teste -->
+          <div class="glass-card">
+            <h3 style="font-family: var(--font-heading); margin-bottom: 0.5rem;">Modelo de Mensagem de Alerta</h3>
+            <p style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 1rem;">
+              Variáveis disponíveis: <code>{{nome_cliente}}</code>, <code>{{nome_instancia}}</code>, <code>{{link_painel}}</code>
+            </p>
+
+            <div class="form-group">
+              <textarea id="master-template" class="form-control" rows="6" style="resize: vertical; font-family: monospace; font-size: 0.88rem;"></textarea>
+            </div>
+
+            <div style="border-top: 1px solid var(--border-color); padding-top: 1.25rem; margin-top: 1.25rem;">
+              <h4 style="font-size: 0.95rem; margin-bottom: 0.75rem;">🧪 Testar Envio de Alerta</h4>
+              <div style="display: flex; gap: 0.75rem;">
+                <input type="text" id="test-phone-input" class="form-control" placeholder="Seu WhatsApp (ex: 5511999998888)">
+                <button id="btn-test-alert" class="btn btn-secondary" style="white-space: nowrap;">
+                  Enviar Teste
+                </button>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+      </div>
+
+      <!-- ABA 5: PERSONALIZAÇÃO (WHITE-LABEL) -->
+      <div id="tab-settings" class="tab-content" style="display: none;">
+        
+        <div class="glass-card" style="max-width: 600px; margin: 0 auto;">
+          <h3 style="font-family: var(--font-heading); margin-bottom: 1.5rem;">Personalização da Marca (White-Label)</h3>
+
+          <div class="form-group">
+            <label for="setting-agency-name">Nome da sua Empresa / Agência</label>
+            <input type="text" id="setting-agency-name" class="form-control" placeholder="Ex: MinhaAgencia Tech">
+          </div>
+
+          <div class="form-group">
+            <label for="setting-logo-url">URL da Logomarca (PNG ou SVG)</label>
+            <input type="text" id="setting-logo-url" class="form-control" placeholder="https://seudominio.com/logo.png">
+          </div>
+
+          <div class="form-group">
+            <label for="setting-primary-color">Cor Primária do Painel</label>
+            <div style="display: flex; gap: 0.75rem; align-items: center;">
+              <input type="color" id="setting-primary-color-picker" style="width: 50px; height: 42px; padding: 2px; border-radius: 8px; border: 1px solid var(--border-color); background: none; cursor: pointer;">
+              <input type="text" id="setting-primary-color" class="form-control" placeholder="#059669">
+            </div>
+          </div>
+
+          <div class="form-group" style="margin-top: 1.5rem; border-top: 1px solid var(--border-color); padding-top: 1.5rem;">
+            <label for="setting-admin-password">Nova Senha de Acesso do Admin</label>
+            <input type="password" id="setting-admin-password" class="form-control" placeholder="Nova senha de login">
+          </div>
+
+          <button id="btn-save-settings" class="btn btn-primary" style="width: 100%; margin-top: 1rem;">
+            💾 Salvar Alterações de Marca
+          </button>
+        </div>
+
+      </div>
+
+    </div>
+
+  </main>
+
+  <footer>
+    EvoConnect Painel Administrativo &copy; 2026
+  </footer>
+
+  <script src="/js/admin.js"></script>
+</body>
+</html>
