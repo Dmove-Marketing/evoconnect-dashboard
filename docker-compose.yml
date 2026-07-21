@@ -17,6 +17,10 @@ services:
     deploy:
       restart_policy:
         condition: on-failure
+      labels:
+        - "traefik.enable=true"
+        - "traefik.http.routers.evoconnect.rule=Host(`painel.dmove.com.br`)"
+        - "traefik.http.services.evoconnect.loadbalancer.server.port=3000"
 
 volumes:
   evoconnect_data:
