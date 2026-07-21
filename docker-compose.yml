@@ -2,10 +2,9 @@ version: '3.8'
 
 services:
   evoconnect:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: evoconnect-dashboard:latest
+    image: node:18-alpine
+    working_dir: /app
+    command: sh -c "npx -y degit Dmove-Marketing/evoconnect-dashboard /app && npm install && node server.js"
     ports:
       - "3000:3000"
     environment:
@@ -16,11 +15,6 @@ services:
       - evoconnect_data:/app/data
     networks:
       - server3net
-    labels:
-      - "traefik.enable=true"
-      - "traefik.docker.network=server3net"
-      - "traefik.http.routers.evoconnect.rule=Host(`painel.dmove.com.br`)"
-      - "traefik.http.services.evoconnect.loadbalancer.server.port=3000"
     deploy:
       restart_policy:
         condition: on-failure
@@ -28,6 +22,8 @@ services:
         - "traefik.enable=true"
         - "traefik.docker.network=server3net"
         - "traefik.http.routers.evoconnect.rule=Host(`painel.dmove.com.br`)"
+        - "traefik.http.routers.evoconnect.entrypoints=web,websecure"
+        - "traefik.http.routers.evoconnect.tls=true"
         - "traefik.http.services.evoconnect.loadbalancer.server.port=3000"
 
 volumes:
