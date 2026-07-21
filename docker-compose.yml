@@ -21,9 +21,9 @@ services:
         condition: on-failure
       labels:
         - "traefik.enable=true"
+        - "traefik.docker.network=server3net"
         - "traefik.http.routers.evoconnect.rule=Host(`painel.dmove.com.br`)"
-        - "traefik.http.routers.evoconnect.entrypoints=web,websecure"
-        - "traefik.http.routers.evoconnect.tls=true"
+        - "traefik.http.routers.evoconnect.service=evoconnect"
         - "traefik.http.services.evoconnect.loadbalancer.server.port=3000"
 
 volumes:
