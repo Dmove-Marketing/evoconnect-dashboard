@@ -8,10 +8,17 @@
     "dev": "node --watch server.js"
   },
   "dependencies": {
+    "cors": "^2.8.5",
     "express": "^4.19.2",
-    "cors": "^2.8.5"
+    "qrcode": "^1.5.4"
   },
-  "keywords": ["evolution-api", "whatsapp", "dashboard", "portainer", "multi-tenant"],
+  "keywords": [
+    "evolution-api",
+    "whatsapp",
+    "dashboard",
+    "portainer",
+    "multi-tenant"
+  ],
   "author": "Antigravity",
   "license": "MIT"
 }
