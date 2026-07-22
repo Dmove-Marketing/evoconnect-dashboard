@@ -90,10 +90,9 @@ document.addEventListener('DOMContentLoaded', () => {
       .then(data => {
         if (data.status === 'CONNECTED') {
           renderConnected(data);
-        } else if (data.status === 'CONNECTING') {
-          renderConnecting();
         } else {
-          renderDisconnected();
+          // Tanto para 'DISCONNECTED' quanto para 'CONNECTING', carrega e exibe o QR Code para pareamento!
+          renderDisconnected(data.status);
         }
       })
       .catch(err => {
@@ -118,14 +117,14 @@ document.addEventListener('DOMContentLoaded', () => {
     qrRefreshInterval = null;
   }
 
-  function renderConnecting() {
-    statusBadge.className = 'status-badge connecting';
-    statusText.textContent = 'Conectando...';
-  }
-
-  function renderDisconnected() {
-    statusBadge.className = 'status-badge disconnected';
-    statusText.textContent = 'Desconectado';
+  function renderDisconnected(status) {
+    if (status === 'CONNECTING') {
+      statusBadge.className = 'status-badge connecting';
+      statusText.textContent = 'Aguardando Leitura...';
+    } else {
+      statusBadge.className = 'status-badge disconnected';
+      statusText.textContent = 'Desconectado';
+    }
 
     connectedState.style.display = 'none';
     disconnectedState.style.display = 'block';
@@ -139,9 +138,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // 3. Busca de QR Code ao vivo
   function fetchQRCode() {
-    qrLoading.style.display = 'flex';
-    qrWrapper.style.display = 'none';
-
     fetch(`/api/client/connect/${clientToken}`)
       .then(res => res.json())
       .then(data => {
