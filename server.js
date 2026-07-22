@@ -153,7 +153,8 @@ async function getEVOStatus(server, instanceName, clientEvoToken = '') {
   });
 
   if (res.ok && res.data?.data) {
-    const isConnected = res.data.data.Connected || res.data.data.LoggedIn;
+    // No Evolution Go: LoggedIn indica se o WhatsApp está realmente autenticado e conectado
+    const isConnected = res.data.data.LoggedIn === true;
     return {
       status: isConnected ? 'CONNECTED' : 'DISCONNECTED',
       phone: res.data.data.Jid || '',
@@ -320,9 +321,13 @@ async function createEVOInstance(server, instanceName) {
   }
 
   const cleanUrl = server.url.replace(/\/$/, '');
+  const generatedToken = `token-${Math.random().toString(36).substring(2, 12)}${Date.now().toString(36)}`;
+
+  // Payload universal (funciona tanto para Evolution Baileys v1/v2 quanto Evolution Go)
   const payload = {
     instanceName: instanceName,
     name: instanceName,
+    token: generatedToken,
     qrcode: true,
     integration: 'WHATSAPP-BAILEYS'
   };
@@ -333,7 +338,9 @@ async function createEVOInstance(server, instanceName) {
     body: JSON.stringify(payload)
   });
 
-  return { ok: res.ok, data: res.data };
+  const evoGoToken = res.data?.data?.token || res.data?.token || generatedToken;
+
+  return { ok: res.ok, data: res.data, evoGoToken };
 }
 
 // ----------------------------------------------------
@@ -377,7 +384,7 @@ async function syncAllInstances() {
         addedCount++;
       } else {
         // Atualiza a associação do servidor e token Go caso necessário
-        if (remoteInst.token && !exists.evoGoToken) {
+        if (remoteInst.token && (!exists.evoGoToken || exists.evoGoToken !== remoteInst.token)) {
           exists.evoGoToken = remoteInst.token;
         }
         if (exists.serverId !== server.id && remoteInst.token) {
@@ -525,8 +532,10 @@ app.post('/api/v1/auto-create-client', async (req, res) => {
     return res.status(400).json({ error: 'Nenhum servidor Evolution API cadastrado.' });
   }
 
+  let evoGoToken = '';
   if (createInEVO) {
-    await createEVOInstance(targetServer, instanceName);
+    const createRes = await createEVOInstance(targetServer, instanceName);
+    if (createRes.evoGoToken) evoGoToken = createRes.evoGoToken;
   }
 
   let client = db.clients.find(c => c.serverId === targetServer.id && c.instanceName === instanceName);
@@ -539,10 +548,14 @@ app.post('/api/v1/auto-create-client', async (req, res) => {
       serverId: targetServer.id,
       instanceName,
       token: `token-${Math.random().toString(36).substring(2, 10)}${Date.now().toString(36)}`,
+      evoGoToken,
       lastStatus: 'close',
       lastAlertSentAt: null
     };
     db.clients.push(client);
+    saveDB(db);
+  } else if (evoGoToken) {
+    client.evoGoToken = evoGoToken;
     saveDB(db);
   }
 
@@ -668,8 +681,10 @@ app.post('/api/admin/clients', async (req, res) => {
 
   const server = db.servers.find(s => s.id === serverId);
 
+  let evoGoToken = '';
   if (createInEVO && server) {
-    await createEVOInstance(server, instanceName);
+    const createRes = await createEVOInstance(server, instanceName);
+    if (createRes.evoGoToken) evoGoToken = createRes.evoGoToken;
   }
 
   const newClient = {
@@ -679,6 +694,7 @@ app.post('/api/admin/clients', async (req, res) => {
     serverId,
     instanceName,
     token: `token-${Math.random().toString(36).substring(2, 10)}${Date.now().toString(36)}`,
+    evoGoToken,
     lastStatus: 'close',
     lastAlertSentAt: null
   };
