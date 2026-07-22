@@ -4,6 +4,7 @@ const express = require('express');
 const cors = require('cors');
 const fs = require('fs');
 const path = require('path');
+const QRCode = require('qrcode');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -201,34 +202,50 @@ async function getEVOQRCode(server, instanceName, clientEvoToken = '') {
   const cleanUrl = server.url.replace(/\/$/, '');
   const activeKey = clientEvoToken || server.apiKey;
 
+  let qrCode = null;
+  let pairingCode = null;
+
   // Evolution Go: tenta /instance/qr usando o token da instância ou apiKey
   let res = await evoFetch(`${cleanUrl}/instance/qr`, {
     headers: { 'apikey': activeKey }
   });
 
   if (res.ok) {
-    let qrCode = res.data?.data?.Qrcode || res.data?.data?.qrcode || res.data?.qrcode || res.data?.code || res.data?.base64 || res.data?.qrcode?.base64;
-    let pairingCode = res.data?.data?.PairingCode || res.data?.data?.pairingCode || res.data?.pairingCode || null;
-    if (qrCode && !qrCode.startsWith('data:image')) {
-      qrCode = `data:image/png;base64,${qrCode}`;
-    }
-    if (qrCode) {
-      return { ok: true, qrCode, pairingCode };
+    qrCode = res.data?.data?.Qrcode || res.data?.data?.qrcode || res.data?.qrcode || res.data?.code || res.data?.base64 || res.data?.qrcode?.base64;
+    pairingCode = res.data?.data?.PairingCode || res.data?.data?.pairingCode || res.data?.pairingCode || null;
+  }
+
+  if (!qrCode) {
+    // Tenta endpoint v1/v2 (/instance/connect/:name)
+    res = await evoFetch(`${cleanUrl}/instance/connect/${instanceName}`, {
+      headers: { 'apikey': server.apiKey }
+    });
+
+    if (res.ok) {
+      qrCode = res.data?.code || res.data?.base64 || res.data?.qrcode?.base64 || res.data?.qrcode;
+      pairingCode = res.data?.pairingCode || null;
     }
   }
 
-  // Tenta endpoint v1/v2 (/instance/connect/:name)
-  res = await evoFetch(`${cleanUrl}/instance/connect/${instanceName}`, {
-    headers: { 'apikey': server.apiKey }
-  });
-
-  if (res.ok) {
-    let qrCode = res.data?.code || res.data?.base64 || res.data?.qrcode?.base64 || res.data?.qrcode;
-    let pairingCode = res.data?.pairingCode || null;
-    if (qrCode && !qrCode.startsWith('data:image')) {
-      qrCode = `data:image/png;base64,${qrCode}`;
+  if (qrCode && typeof qrCode === 'string') {
+    // 1. Se a resposta já for uma imagem data:image/png;base64
+    if (qrCode.startsWith('data:image')) {
+      return { ok: true, qrCode, pairingCode };
     }
-    return { ok: true, qrCode, pairingCode };
+    
+    // 2. Se for uma string base64 pura de imagem PNG
+    if (qrCode.startsWith('iVBORw0KGgo')) {
+      return { ok: true, qrCode: `data:image/png;base64,${qrCode}`, pairingCode };
+    }
+
+    // 3. Se for a string bruta de QR Code do Baileys (iniciando com 2@ ou texto livre)
+    try {
+      const generatedPng = await QRCode.toDataURL(qrCode, { margin: 2, width: 320 });
+      return { ok: true, qrCode: generatedPng, pairingCode };
+    } catch (err) {
+      const fallbackUrl = `https://api.qrserver.com/v1/create-qr-code/?size=320x320&data=${encodeURIComponent(qrCode)}`;
+      return { ok: true, qrCode: fallbackUrl, pairingCode };
+    }
   }
 
   return { ok: false, message: res.data?.message || res.data?.error || 'Falha ao buscar QR Code' };
@@ -253,21 +270,27 @@ async function getEVOPairingCode(server, instanceName, phoneNumber, clientEvoTok
 
   if (res.ok) {
     const code = res.data?.data?.PairingCode || res.data?.data?.pairingCode || res.data?.pairingCode || res.data?.code || res.data?.data?.code;
-    if (code) {
+    if (code && typeof code === 'string' && code.length < 20 && !code.startsWith('2@')) {
       return { ok: true, pairingCode: code };
     }
   }
 
+  // Evolution API v1/v2 Baileys: GET /instance/connect/:name?number=...
   res = await evoFetch(`${cleanUrl}/instance/connect/${instanceName}?number=${cleanPhone}`, {
     headers: { 'apikey': server.apiKey }
   });
 
   if (res.ok) {
     const code = res.data?.pairingCode || res.data?.code;
-    return { ok: true, pairingCode: code };
+    if (code && typeof code === 'string' && code.length < 20 && !code.startsWith('2@')) {
+      return { ok: true, pairingCode: code };
+    }
   }
 
-  return { ok: false, message: 'Erro ao gerar código de pareamento' };
+  return { 
+    ok: false, 
+    message: 'Esta versão da Evolution API não suporta Código de Pareamento via API. Por favor, utilize a leitura do QR Code.' 
+  };
 }
 
 // 4. Logout / Desconectar
