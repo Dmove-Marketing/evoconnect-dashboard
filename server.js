@@ -207,12 +207,14 @@ async function getEVOQRCode(server, instanceName, clientEvoToken = '') {
   });
 
   if (res.ok) {
-    let qrCode = res.data?.qrcode || res.data?.code || res.data?.base64 || res.data?.data?.qrcode;
-    let pairingCode = res.data?.pairingCode || null;
+    let qrCode = res.data?.data?.Qrcode || res.data?.data?.qrcode || res.data?.qrcode || res.data?.code || res.data?.base64 || res.data?.qrcode?.base64;
+    let pairingCode = res.data?.data?.PairingCode || res.data?.data?.pairingCode || res.data?.pairingCode || null;
     if (qrCode && !qrCode.startsWith('data:image')) {
       qrCode = `data:image/png;base64,${qrCode}`;
     }
-    return { ok: true, qrCode, pairingCode };
+    if (qrCode) {
+      return { ok: true, qrCode, pairingCode };
+    }
   }
 
   // Tenta endpoint v1/v2 (/instance/connect/:name)
@@ -250,8 +252,10 @@ async function getEVOPairingCode(server, instanceName, phoneNumber, clientEvoTok
   });
 
   if (res.ok) {
-    const code = res.data?.pairingCode || res.data?.code || res.data?.data?.code;
-    return { ok: true, pairingCode: code };
+    const code = res.data?.data?.PairingCode || res.data?.data?.pairingCode || res.data?.pairingCode || res.data?.code || res.data?.data?.code;
+    if (code) {
+      return { ok: true, pairingCode: code };
+    }
   }
 
   res = await evoFetch(`${cleanUrl}/instance/connect/${instanceName}?number=${cleanPhone}`, {
