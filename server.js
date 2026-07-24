@@ -144,6 +144,57 @@ async function evoFetch(url, options = {}) {
   }
 }
 
+// Helper para testar a saude profunda do socket (Deep Health Check para detectar Conexões Fantasmas)
+async function checkDeepSocketHealth(server, instanceName, clientEvoToken = '') {
+  if (!server || !server.url || !server.apiKey) return false;
+  const cleanUrl = server.url.replace(/\/$/, '');
+
+  // Executa uma consulta leve de verificacao de numero no WhatsApp
+  const testUrl = `${cleanUrl}/chat/whatsappNumbers/${encodeURIComponent(instanceName)}`;
+  const res = await evoFetch(testUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'apikey': server.apiKey },
+    body: JSON.stringify({ numbers: ['5511986028866'] })
+  });
+
+  if (!res.ok) {
+    if (res.status === 400 || res.status === 500 || res.status === 404 || res.error) {
+      return false; // Socket desincronizado / Conexão Fantasma
+    }
+  }
+  return true;
+}
+
+// Helper para forcar o reinício da sessão/socket sem perder a conexao (Restart/Reload)
+async function restartEVOInstance(server, instanceName, clientEvoToken = '') {
+  if (!server || !server.url || !server.apiKey) return { ok: false };
+  const cleanUrl = server.url.replace(/\/$/, '');
+  const activeKey = clientEvoToken || server.apiKey;
+
+  // 1. Tenta POST /instance/restart/:name (v2 e v1)
+  let res = await evoFetch(`${cleanUrl}/instance/restart/${encodeURIComponent(instanceName)}`, {
+    method: 'POST',
+    headers: { 'apikey': server.apiKey }
+  });
+
+  if (res.ok) return { ok: true, data: res.data };
+
+  // 2. Tenta GET /instance/connect/:name (v1 e v2 reload)
+  res = await evoFetch(`${cleanUrl}/instance/connect/${encodeURIComponent(instanceName)}`, {
+    headers: { 'apikey': server.apiKey }
+  });
+
+  if (res.ok) return { ok: true, data: res.data };
+
+  // 3. Evolution Go: POST /instance/connect
+  res = await evoFetch(`${cleanUrl}/instance/connect`, {
+    method: 'POST',
+    headers: { 'apikey': activeKey }
+  });
+
+  return { ok: res.ok, data: res.data };
+}
+
 // Helper para buscar instâncias remotas (Suporte a Evolution API Node & Evolution Go)
 async function fetchServerInstances(server) {
   if (!server || !server.url || !server.apiKey) return [];
@@ -206,8 +257,8 @@ async function fetchServerInstances(server) {
   return [];
 }
 
-// 1. Obter Status da Conexão (v1, v2 e Go)
-async function getEVOStatus(server, instanceName, clientEvoToken = '') {
+// 1. Obter Status da Conexão (v1, v2 e Go) com Detecção de Conexões Fantasmas
+async function getEVOStatus(server, instanceName, clientEvoToken = '', skipDeepCheck = false) {
   if (!server || !server.url || !server.apiKey) {
     return { status: 'DISCONNECTED', raw: 'Servidor EVO não configurado' };
   }
@@ -238,6 +289,17 @@ async function getEVOStatus(server, instanceName, clientEvoToken = '') {
   if (res.ok) {
     const stateData = res.data?.instance?.state || res.data?.instance?.status || res.data?.state || res.data?.status;
     if (stateData === 'open' || stateData === 'connected') {
+      // Deep Health Check para identificar socket travado (Conexão Fantasma)
+      if (!skipDeepCheck) {
+        const isSocketAlive = await checkDeepSocketHealth(server, instanceName, clientEvoToken);
+        if (!isSocketAlive) {
+          return {
+            status: 'GHOST',
+            phone: res.data?.instance?.owner || res.data?.owner || '',
+            profileName: res.data?.instance?.profileName || res.data?.profileName || ''
+          };
+        }
+      }
       return {
         status: 'CONNECTED',
         phone: res.data?.instance?.owner || res.data?.owner || '',
@@ -498,7 +560,7 @@ async function syncAllInstances() {
 
 setInterval(syncAllInstances, 120000);
 
-// Monitor de Alertas em Segundo Plano (WhatsApp + E-mail)
+// Monitor de Alertas em Segundo Plano (WhatsApp + E-mail + Detecção de Conexões Fantasmas)
 setInterval(async () => {
   try {
     const db = loadDB();
@@ -517,13 +579,57 @@ setInterval(async () => {
       if (!clientServer) continue;
 
       const statusRes = await getEVOStatus(clientServer, client.instanceName, client.evoGoToken);
-      const previousStatus = client.lastStatus; // 'open' ou 'close'
-      const newStatus = statusRes.status === 'CONNECTED' ? 'open' : 'close';
+      const previousStatus = client.lastStatus; // 'open', 'close', ou 'ghost'
+      
+      let newStatus = 'close';
+      if (statusRes.status === 'CONNECTED') newStatus = 'open';
+      else if (statusRes.status === 'GHOST') newStatus = 'ghost';
+
       client.lastStatus = newStatus;
 
       const clientLink = `${baseUrl}/?token=${client.token}`;
 
-      // 1. ALERTA DE DESCONEXÃO POR E-MAIL (🔴)
+      // 1. CONEXÃO FANTASMA DETECTADA (👻)
+      if (newStatus === 'ghost') {
+        console.log(`[ALERTAS] 👻 Conexão Fantasma detectada na instância ${client.instanceName} (${client.name}). Tentando auto-restart...`);
+        
+        // Dispara auto-restart do socket para ressuscitar a conexão
+        await restartEVOInstance(clientServer, client.instanceName, client.evoGoToken);
+
+        const wasAlertedRecently = client.lastAlertSentAt && (now - client.lastAlertSentAt < ONE_HOUR);
+
+        if (!wasAlertedRecently) {
+          if (emailCfg.enabled && emailCfg.recipientEmails) {
+            const subject = `👻 [ALERTA EVOCONNECT] Conexão Fantasma Detectada - ${client.name} (${client.instanceName})`;
+            const htmlContent = `
+              <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden; background: #ffffff;">
+                <div style="background: #8b5cf6; color: white; padding: 20px; text-align: center;">
+                  <h1 style="margin: 0; font-size: 20px;">👻 Conexão Fantasma (Socket Travado) Detectada</h1>
+                </div>
+                <div style="padding: 24px; color: #1e293b; line-height: 1.6;">
+                  <p>Atenção! O sistema identificou que a seguinte instância está em estado de <strong>Conexão Fantasma</strong> (reporta "Conectado" na Evolution mas o socket do WhatsApp não responde):</p>
+                  <table style="width: 100%; border-collapse: collapse; margin: 20px 0; background: #f8fafc; border-radius: 6px;">
+                    <tr><td style="padding: 10px; border-bottom: 1px solid #e2e8f0;"><strong>Cliente:</strong></td><td style="padding: 10px; border-bottom: 1px solid #e2e8f0;"><strong>${client.name}</strong></td></tr>
+                    <tr><td style="padding: 10px; border-bottom: 1px solid #e2e8f0;"><strong>Instância:</strong></td><td style="padding: 10px; border-bottom: 1px solid #e2e8f0;"><code>${client.instanceName}</code></td></tr>
+                    <tr><td style="padding: 10px;"><strong>Servidor:</strong></td><td style="padding: 10px;">${clientServer.name}</td></tr>
+                  </table>
+                  <p style="background: #f3e8ff; border: 1px solid #d8b4fe; padding: 12px; border-radius: 6px; color: #6b21a8; font-size: 14px;">
+                    ⚡ O EvoConnect enviou automaticamente um comando de <strong>Reinício de Socket</strong> para ressuscitar a conexão sem necessidade de novo QR Code.
+                  </p>
+                  <div style="text-align: center; margin: 30px 0;">
+                    <a href="${clientLink}" target="_blank" style="background: #059669; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">🔗 Acessar Link de Reconexão do Cliente</a>
+                  </div>
+                  <p style="font-size: 13px; color: #64748b;">Este alerta automático foi gerado pelo sistema EvoConnect.</p>
+                </div>
+              </div>
+            `;
+            sendEmailNotification(emailCfg, { subject, htmlContent });
+          }
+          client.lastAlertSentAt = now;
+        }
+      }
+
+      // 2. ALERTA DE DESCONEXÃO POR E-MAIL (🔴)
       if (previousStatus === 'open' && newStatus === 'close') {
         console.log(`[ALERTAS] Instância ${client.instanceName} (${client.name}) DESCONECTOU!`);
 
@@ -552,8 +658,8 @@ setInterval(async () => {
         }
       }
 
-      // 2. ALERTA DE RECONEXÃO POR E-MAIL (🟢)
-      if (previousStatus === 'close' && newStatus === 'open') {
+      // 3. ALERTA DE RECONEXÃO POR E-MAIL (🟢)
+      if ((previousStatus === 'close' || previousStatus === 'ghost') && newStatus === 'open') {
         console.log(`[ALERTAS] Instância ${client.instanceName} (${client.name}) RECONECTADA!`);
 
         if (emailCfg.enabled && emailCfg.notifyOnConnect !== false && emailCfg.recipientEmails) {
@@ -578,7 +684,7 @@ setInterval(async () => {
         }
       }
 
-      // 3. WHATSAPP MASTER ALERT (se o cliente tiver telefone cadastrado)
+      // 4. WHATSAPP MASTER ALERT (se o cliente tiver telefone cadastrado)
       if (client.phone && masterServer && db.masterInstance.instanceName) {
         const wasAlertedRecently = client.lastAlertSentAt && (now - client.lastAlertSentAt < ONE_HOUR);
         if (client.lastStatus === 'close' && (previousStatus === 'open' || !wasAlertedRecently)) {
@@ -627,7 +733,7 @@ app.get('/api/client/status/:token', async (req, res) => {
   if (!server) return res.status(400).json({ error: 'Servidor EVO não configurado' });
 
   const result = await getEVOStatus(server, client.instanceName, client.evoGoToken);
-  client.lastStatus = result.status === 'CONNECTED' ? 'open' : 'close';
+  client.lastStatus = result.status === 'CONNECTED' ? 'open' : (result.status === 'GHOST' ? 'ghost' : 'close');
   saveDB(db);
 
   return res.json(result);
@@ -743,6 +849,7 @@ app.get('/api/admin/overview', async (req, res) => {
   
   let connectedCount = 0;
   let disconnectedCount = 0;
+  let ghostCount = 0;
 
   const clientStatuses = await Promise.all(
     db.clients.map(async (client) => {
@@ -753,7 +860,12 @@ app.get('/api/admin/overview', async (req, res) => {
         status = st.status;
       }
       if (status === 'CONNECTED') connectedCount++;
-      else disconnectedCount++;
+      else if (status === 'GHOST') {
+        ghostCount++;
+        disconnectedCount++;
+      } else {
+        disconnectedCount++;
+      }
 
       return {
         ...client,
@@ -768,11 +880,33 @@ app.get('/api/admin/overview', async (req, res) => {
     totalServers: db.servers.length,
     connectedCount,
     disconnectedCount,
+    ghostCount,
     masterInstance: db.masterInstance,
     emailSettings: db.emailSettings || defaultEmailSettings,
     clients: clientStatuses,
     servers: db.servers,
     settings: db.settings
+  });
+});
+
+app.post('/api/admin/instances/restart', async (req, res) => {
+  const { clientId } = req.body;
+  const db = loadDB();
+
+  const client = db.clients.find(c => c.id === clientId);
+  if (!client) return res.status(404).json({ error: 'Cliente não encontrado.' });
+
+  const server = db.servers.find(s => s.id === client.serverId);
+  if (!server) return res.status(400).json({ error: 'Servidor EVO não encontrado.' });
+
+  const restartResult = await restartEVOInstance(server, client.instanceName, client.evoGoToken);
+
+  return res.json({
+    ok: restartResult.ok,
+    message: restartResult.ok 
+      ? `Comando de reinício do socket enviado com sucesso para ${client.instanceName}!` 
+      : 'Não foi possível reiniciar o socket da instância.',
+    data: restartResult.data
   });
 });
 

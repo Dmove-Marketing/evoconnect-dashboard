@@ -221,7 +221,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const emptyMsg = rawClientsData.length > 0 
         ? 'Nenhum cliente encontrado com os filtros aplicados.' 
         : 'Nenhum cliente cadastrado ainda. Clique em "Sincronizar Instâncias" para buscar instâncias existentes na EVO.';
-      overviewClientsTbody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: var(--text-muted);">${emptyMsg}</td></tr>`;
+      overviewClientsTbody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: var(--text-muted);">${emptyMsg}</td></tr>`;
       return;
     }
 
@@ -229,9 +229,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
     overviewClientsTbody.innerHTML = clients.map(c => {
       const link = `${host}/?token=${c.token}`;
-      const statusBadge = c.currentStatus === 'CONNECTED' 
-        ? `<span class="status-badge connected" style="font-size: 0.75rem; padding: 4px 10px;"><span class="pulse-dot"></span>Conectado</span>`
-        : `<span class="status-badge disconnected" style="font-size: 0.75rem; padding: 4px 10px;"><span class="pulse-dot"></span>Desconectado</span>`;
+      let statusBadge = `<span class="status-badge disconnected" style="font-size: 0.75rem; padding: 4px 10px;"><span class="pulse-dot"></span>Desconectado</span>`;
+      if (c.currentStatus === 'CONNECTED') {
+        statusBadge = `<span class="status-badge connected" style="font-size: 0.75rem; padding: 4px 10px;"><span class="pulse-dot"></span>Conectado</span>`;
+      } else if (c.currentStatus === 'GHOST') {
+        statusBadge = `<span class="status-badge" style="background: rgba(168,85,247,0.2); color: #c084fc; border: 1px solid #c084fc; font-size: 0.75rem; padding: 4px 10px;"><span class="pulse-dot" style="background: #c084fc;"></span>👻 Fantasma</span>`;
+      }
 
       return `
         <tr>
@@ -241,11 +244,16 @@ document.addEventListener('DOMContentLoaded', () => {
           <td>${statusBadge}</td>
           <td>
             <div style="display: flex; gap: 0.5rem; align-items: center;">
-              <input type="text" class="form-control" value="${link}" readonly style="font-size: 0.8rem; padding: 4px 8px; width: 220px;">
-              <button class="btn btn-secondary" onclick="copyLink('${link}')" style="padding: 4px 10px; font-size: 0.8rem;">
+              <input type="text" class="form-control" value="${link}" readonly style="font-size: 0.8rem; padding: 4px 8px; width: 200px;">
+              <button class="btn btn-secondary" onclick="copyLink('${link}')" style="padding: 4px 8px; font-size: 0.8rem;">
                 📋 Copiar
               </button>
             </div>
+          </td>
+          <td>
+            <button class="btn btn-secondary" onclick="restartInstance('${c.id}')" style="padding: 4px 8px; font-size: 0.78rem; background: rgba(168,85,247,0.15); border: 1px solid #a855f7; color: #c084fc;" title="Reiniciar Socket da Instância">
+              ⚡ Reiniciar
+            </button>
           </td>
         </tr>
       `;
@@ -558,6 +566,26 @@ document.addEventListener('DOMContentLoaded', () => {
         if (data.ok) alert('Configurações de marca salvas com sucesso!');
       });
   });
+
+  window.restartInstance = function(id) {
+    if (!confirm('Deseja realmente solicitar o reinício do socket desta instância?')) return;
+
+    fetch('/api/admin/instances/restart', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ clientId: id })
+    })
+      .then(res => res.json())
+      .then(data => {
+        if (data.ok) {
+          alert(data.message || 'Comando de reinício enviado com sucesso!');
+          loadOverviewData();
+        } else {
+          alert(data.error || 'Não foi possível reiniciar o socket.');
+        }
+      })
+      .catch(() => alert('Erro de comunicação ao tentar reiniciar o socket.'));
+  };
 
   window.copyLink = function(link) {
     navigator.clipboard.writeText(link).then(() => {
