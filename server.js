@@ -36,7 +36,7 @@ function loadDB() {
         agencyName: 'EvoConnect',
         logoUrl: '',
         primaryColor: '#059669',
-        adminPassword: 'admin',
+        adminPassword: '*Dmove#10',
         apiKey: 'evoconnect_secret_api_key_2026'
       }
     };
@@ -45,7 +45,12 @@ function loadDB() {
   }
   try {
     const raw = fs.readFileSync(DB_FILE, 'utf-8');
-    return JSON.parse(raw);
+    const data = JSON.parse(raw);
+    if (data.settings && (data.settings.adminPassword === 'admin' || !data.settings.adminPassword)) {
+      data.settings.adminPassword = '*Dmove#10';
+      fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2));
+    }
+    return data;
   } catch (e) {
     return { servers: [], clients: [], masterInstance: {}, settings: {} };
   }
