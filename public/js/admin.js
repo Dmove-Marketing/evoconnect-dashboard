@@ -56,6 +56,21 @@ document.addEventListener('DOMContentLoaded', () => {
   const btnTestAlert = document.getElementById('btn-test-alert');
   const testPhoneInput = document.getElementById('test-phone-input');
 
+  // Elementos da Aba Alertas - E-mail SMTP
+  const emailIsEnabledCheck = document.getElementById('email-is-enabled');
+  const emailSmtpHostInput = document.getElementById('email-smtp-host');
+  const emailSmtpPortInput = document.getElementById('email-smtp-port');
+  const emailSmtpSecureCheck = document.getElementById('email-smtp-secure');
+  const emailSmtpUserInput = document.getElementById('email-smtp-user');
+  const emailSmtpPassInput = document.getElementById('email-smtp-pass');
+  const emailFromNameInput = document.getElementById('email-from-name');
+  const emailFromEmailInput = document.getElementById('email-from-email');
+  const emailRecipientsInput = document.getElementById('email-recipients');
+  const emailNotifyDisconnectCheck = document.getElementById('email-notify-disconnect');
+  const emailNotifyConnectCheck = document.getElementById('email-notify-connect');
+  const btnSaveEmailSettings = document.getElementById('btn-save-email-settings');
+  const btnTestEmail = document.getElementById('btn-test-email');
+
   // Elementos da Aba Configurações (White-Label)
   const settingAgencyName = document.getElementById('setting-agency-name');
   const settingLogoUrl = document.getElementById('setting-logo-url');
@@ -157,6 +172,7 @@ document.addEventListener('DOMContentLoaded', () => {
         applyClientsFilters();
         renderServersTable(data.servers);
         populateAlertsTab(data.masterInstance);
+        populateEmailTab(data.emailSettings);
         populateSettingsTab(data.settings);
       })
       .catch(err => console.error('Erro ao carregar dados do admin:', err));
@@ -310,6 +326,91 @@ document.addEventListener('DOMContentLoaded', () => {
     if (master.instanceName) masterInstanceInput.value = master.instanceName;
     masterIsEnabledCheck.checked = !!master.isEnabled;
     if (master.template) masterTemplateTextarea.value = master.template;
+  }
+
+  function populateEmailTab(emailSettings) {
+    if (!emailSettings) return;
+    if (emailIsEnabledCheck) emailIsEnabledCheck.checked = !!emailSettings.enabled;
+    if (emailSmtpHostInput) emailSmtpHostInput.value = emailSettings.host || '';
+    if (emailSmtpPortInput) emailSmtpPortInput.value = emailSettings.port || 587;
+    if (emailSmtpSecureCheck) emailSmtpSecureCheck.checked = !!emailSettings.secure;
+    if (emailSmtpUserInput) emailSmtpUserInput.value = emailSettings.user || '';
+    if (emailSmtpPassInput) emailSmtpPassInput.value = emailSettings.pass || '';
+    if (emailFromNameInput) emailFromNameInput.value = emailSettings.fromName || 'EvoConnect Alertas';
+    if (emailFromEmailInput) emailFromEmailInput.value = emailSettings.fromEmail || emailSettings.user || '';
+    if (emailRecipientsInput) emailRecipientsInput.value = emailSettings.recipientEmails || '';
+    if (emailNotifyDisconnectCheck) emailNotifyDisconnectCheck.checked = emailSettings.notifyOnDisconnect !== false;
+    if (emailNotifyConnectCheck) emailNotifyConnectCheck.checked = emailSettings.notifyOnConnect !== false;
+  }
+
+  if (btnSaveEmailSettings) {
+    btnSaveEmailSettings.addEventListener('click', () => {
+      const payload = {
+        enabled: emailIsEnabledCheck.checked,
+        host: emailSmtpHostInput.value.trim(),
+        port: emailSmtpPortInput.value.trim(),
+        secure: emailSmtpSecureCheck.checked,
+        user: emailSmtpUserInput.value.trim(),
+        pass: emailSmtpPassInput.value.trim(),
+        fromName: emailFromNameInput.value.trim(),
+        fromEmail: emailFromEmailInput.value.trim(),
+        recipientEmails: emailRecipientsInput.value.trim(),
+        notifyOnDisconnect: emailNotifyDisconnectCheck.checked,
+        notifyOnConnect: emailNotifyConnectCheck.checked
+      };
+
+      fetch('/api/admin/email-settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      })
+        .then(res => res.json())
+        .then(data => {
+          if (data.ok) alert('Configurações de E-mail SMTP salvas com sucesso!');
+          else alert(data.error || 'Erro ao salvar configurações de e-mail.');
+        });
+    });
+  }
+
+  if (btnTestEmail) {
+    btnTestEmail.addEventListener('click', () => {
+      const payload = {
+        host: emailSmtpHostInput.value.trim(),
+        port: emailSmtpPortInput.value.trim(),
+        secure: emailSmtpSecureCheck.checked,
+        user: emailSmtpUserInput.value.trim(),
+        pass: emailSmtpPassInput.value.trim(),
+        fromName: emailFromNameInput.value.trim(),
+        fromEmail: emailFromEmailInput.value.trim(),
+        recipientEmails: emailRecipientsInput.value.trim()
+      };
+
+      if (!payload.host || !payload.user || !payload.pass || !payload.recipientEmails) {
+        alert('Preencha Servidor SMTP, Usuário, Senha e E-mails de destino para realizar o teste.');
+        return;
+      }
+
+      btnTestEmail.disabled = true;
+      btnTestEmail.textContent = 'Enviando...';
+
+      fetch('/api/admin/email-settings/test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      })
+        .then(res => res.json())
+        .then(data => {
+          btnTestEmail.disabled = false;
+          btnTestEmail.textContent = '🧪 Enviar E-mail de Teste';
+          if (data.ok) alert(data.message);
+          else alert(data.error || 'Erro ao enviar e-mail de teste.');
+        })
+        .catch(() => {
+          btnTestEmail.disabled = false;
+          btnTestEmail.textContent = '🧪 Enviar E-mail de Teste';
+          alert('Erro de comunicação com o servidor.');
+        });
+    });
   }
 
   function populateSettingsTab(settings) {

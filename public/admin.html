@@ -316,6 +316,93 @@
 
         </div>
 
+        <!-- SEÇÃO: ALERTAS POR E-MAIL (SMTP) -->
+        <div class="glass-card" style="margin-top: 2rem;">
+          <h3 style="font-family: var(--font-heading); margin-bottom: 0.5rem;">📧 Notificações de Conexão & Desconexão por E-mail (SMTP)</h3>
+          <p style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 1.5rem;">
+            Receba avisos instantâneos na sua caixa de e-mail sempre que a conexão de um WhatsApp for perdida (🔴 Desconectado) ou restabelecida (🟢 Conectado).
+          </p>
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem;">
+            
+            <!-- Coluna 1: Servidor SMTP -->
+            <div>
+              <div class="form-group" style="flex-direction: row; align-items: center; gap: 0.75rem; margin-bottom: 1.25rem;">
+                <input type="checkbox" id="email-is-enabled" style="width: 20px; height: 20px; accent-color: var(--primary-color);">
+                <label for="email-is-enabled" style="cursor: pointer; font-weight: 600;">Ativar Alertas por E-mail</label>
+              </div>
+
+              <div class="form-group">
+                <label for="email-smtp-host">Servidor SMTP (Host)</label>
+                <input type="text" id="email-smtp-host" class="form-control" placeholder="smtp.gmail.com ou mail.seudominio.com.br">
+              </div>
+
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                <div class="form-group">
+                  <label for="email-smtp-port">Porta SMTP</label>
+                  <input type="number" id="email-smtp-port" class="form-control" placeholder="587">
+                </div>
+                <div class="form-group" style="flex-direction: row; align-items: center; gap: 0.5rem; margin-top: 1.8rem;">
+                  <input type="checkbox" id="email-smtp-secure" style="width: 18px; height: 18px; accent-color: var(--primary-color);">
+                  <label for="email-smtp-secure" style="cursor: pointer; font-size: 0.85rem;">Usar SSL/TLS (Porta 465)</label>
+                </div>
+              </div>
+
+              <div class="form-group">
+                <label for="email-smtp-user">Usuário / E-mail do SMTP</label>
+                <input type="text" id="email-smtp-user" class="form-control" placeholder="alertas@seudominio.com.br">
+              </div>
+
+              <div class="form-group">
+                <label for="email-smtp-pass">Senha do SMTP / App Password</label>
+                <input type="password" id="email-smtp-pass" class="form-control" placeholder="••••••••••••">
+              </div>
+            </div>
+
+            <!-- Coluna 2: Remetente & Destinatários -->
+            <div>
+              <div class="form-group">
+                <label for="email-from-name">Nome do Remetente</label>
+                <input type="text" id="email-from-name" class="form-control" placeholder="EvoConnect Alertas">
+              </div>
+
+              <div class="form-group">
+                <label for="email-from-email">E-mail do Remetente (From)</label>
+                <input type="email" id="email-from-email" class="form-control" placeholder="alertas@seudominio.com.br">
+              </div>
+
+              <div class="form-group">
+                <label for="email-recipients">E-mails de Destino dos Avisos (separados por vírgula)</label>
+                <input type="text" id="email-recipients" class="form-control" placeholder="rodrigo@dmove.com.br, suporte@dmove.com.br">
+              </div>
+
+              <div style="background: rgba(255,255,255,0.03); padding: 1rem; border-radius: 8px; margin-bottom: 1.25rem;">
+                <div style="font-size: 0.85rem; font-weight: 600; margin-bottom: 0.5rem; color: var(--text-muted);">EVENTOS DE NOTIFICAÇÃO</div>
+                <div style="display: flex; gap: 1.5rem; flex-wrap: wrap;">
+                  <div style="display: flex; align-items: center; gap: 0.5rem;">
+                    <input type="checkbox" id="email-notify-disconnect" checked style="width: 18px; height: 18px; accent-color: #ef4444;">
+                    <label for="email-notify-disconnect" style="cursor: pointer; font-size: 0.85rem;">🔴 Ao Desconectar</label>
+                  </div>
+                  <div style="display: flex; align-items: center; gap: 0.5rem;">
+                    <input type="checkbox" id="email-notify-connect" checked style="width: 18px; height: 18px; accent-color: #10b981;">
+                    <label for="email-notify-connect" style="cursor: pointer; font-size: 0.85rem;">🟢 Ao Reconectar</label>
+                  </div>
+                </div>
+              </div>
+
+              <div style="display: flex; gap: 1rem;">
+                <button id="btn-save-email-settings" class="btn btn-primary" style="flex: 1;">
+                  💾 Salvar Configurações de E-mail
+                </button>
+                <button id="btn-test-email" class="btn btn-secondary">
+                  🧪 Enviar E-mail de Teste
+                </button>
+              </div>
+            </div>
+
+          </div>
+        </div>
+
       </div>
 
       <!-- ABA 5: PERSONALIZAÇÃO (WHITE-LABEL) & API N8N -->

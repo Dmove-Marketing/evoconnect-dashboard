@@ -5,6 +5,7 @@ const cors = require('cors');
 const fs = require('fs');
 const path = require('path');
 const QRCode = require('qrcode');
+const nodemailer = require('nodemailer');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -21,6 +22,20 @@ if (!fs.existsSync(DATA_DIR)) {
   fs.mkdirSync(DATA_DIR, { recursive: true });
 }
 
+const defaultEmailSettings = {
+  enabled: false,
+  host: '',
+  port: 587,
+  secure: false,
+  user: '',
+  pass: '',
+  fromName: 'EvoConnect Alertas',
+  fromEmail: '',
+  recipientEmails: '',
+  notifyOnDisconnect: true,
+  notifyOnConnect: true
+};
+
 function loadDB() {
   if (!fs.existsSync(DB_FILE)) {
     const initialData = {
@@ -32,6 +47,7 @@ function loadDB() {
         isEnabled: false,
         template: 'Olá {{nome_cliente}}! ⚠️\nIdentificamos que a sua conexão do WhatsApp ({{nome_instancia}}) foi desconectada.\n\nAcesse o link abaixo para reconectar seu WhatsApp agora:\n👉 {{link_painel}}'
       },
+      emailSettings: defaultEmailSettings,
       settings: {
         agencyName: 'EvoConnect',
         logoUrl: '',
@@ -50,14 +66,60 @@ function loadDB() {
       data.settings.adminPassword = '*Dmove#10';
       fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2));
     }
+    if (!data.emailSettings) {
+      data.emailSettings = defaultEmailSettings;
+      fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2));
+    }
     return data;
   } catch (e) {
-    return { servers: [], clients: [], masterInstance: {}, settings: {} };
+    return { servers: [], clients: [], masterInstance: {}, emailSettings: defaultEmailSettings, settings: {} };
   }
 }
 
 function saveDB(data) {
   fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2));
+}
+
+// Helper para envio de e-mails via Nodemailer
+async function sendEmailNotification(customSettings, { subject, htmlContent }) {
+  const db = loadDB();
+  const settings = customSettings || db.emailSettings;
+
+  if (!settings || !settings.enabled || !settings.host || !settings.user || !settings.pass || !settings.recipientEmails) {
+    return { ok: false, error: 'Configurações de e-mail incompletas ou desativadas.' };
+  }
+
+  const port = parseInt(settings.port, 10) || 587;
+  const secure = settings.secure === true || port === 465;
+
+  const transporter = nodemailer.createTransport({
+    host: settings.host,
+    port,
+    secure,
+    auth: {
+      user: settings.user,
+      pass: settings.pass
+    },
+    tls: {
+      rejectUnauthorized: false
+    }
+  });
+
+  const fromName = settings.fromName || 'EvoConnect Alertas';
+  const fromEmail = settings.fromEmail || settings.user;
+
+  try {
+    const info = await transporter.sendMail({
+      from: `"${fromName}" <${fromEmail}>`,
+      to: settings.recipientEmails,
+      subject,
+      html: htmlContent
+    });
+    return { ok: true, messageId: info.messageId };
+  } catch (err) {
+    console.error('[EMAIL ERROR]', err.message);
+    return { ok: false, error: err.message };
+  }
 }
 
 // ----------------------------------------------------
@@ -436,42 +498,99 @@ async function syncAllInstances() {
 
 setInterval(syncAllInstances, 120000);
 
-// Monitor de Alertas em Segundo Plano
+// Monitor de Alertas em Segundo Plano (WhatsApp + E-mail)
 setInterval(async () => {
   try {
     const db = loadDB();
-    if (!db.masterInstance || !db.masterInstance.isEnabled) return;
-
-    const masterServer = db.servers.find(s => s.id === db.masterInstance.serverId);
-    if (!masterServer || !db.masterInstance.instanceName) return;
-
     const now = Date.now();
     const ONE_HOUR = 60 * 60 * 1000;
 
-    for (let client of db.clients) {
-      if (!client.phone) continue;
+    const masterServer = (db.masterInstance && db.masterInstance.isEnabled) 
+      ? db.servers.find(s => s.id === db.masterInstance.serverId) 
+      : null;
 
+    const emailCfg = db.emailSettings || {};
+    const baseUrl = process.env.BASE_URL || `https://painel.dmove.com.br`;
+
+    for (let client of db.clients) {
       const clientServer = db.servers.find(s => s.id === client.serverId);
       if (!clientServer) continue;
 
       const statusRes = await getEVOStatus(clientServer, client.instanceName, client.evoGoToken);
-      const previousStatus = client.lastStatus;
-      client.lastStatus = statusRes.status === 'CONNECTED' ? 'open' : 'close';
+      const previousStatus = client.lastStatus; // 'open' ou 'close'
+      const newStatus = statusRes.status === 'CONNECTED' ? 'open' : 'close';
+      client.lastStatus = newStatus;
 
-      const wasAlertedRecently = client.lastAlertSentAt && (now - client.lastAlertSentAt < ONE_HOUR);
+      const clientLink = `${baseUrl}/?token=${client.token}`;
 
-      if (client.lastStatus === 'close' && (previousStatus === 'open' || !wasAlertedRecently)) {
-        const baseUrl = process.env.BASE_URL || `https://painel.dmove.com.br`;
-        const clientLink = `${baseUrl}/?token=${client.token}`;
+      // 1. ALERTA DE DESCONEXÃO POR E-MAIL (🔴)
+      if (previousStatus === 'open' && newStatus === 'close') {
+        console.log(`[ALERTAS] Instância ${client.instanceName} (${client.name}) DESCONECTOU!`);
 
-        let message = db.masterInstance.template || 'Atenção! Seu WhatsApp desconectou. Acesse {{link_painel}} para reconectar.';
-        message = message
-          .replace(/{{nome_cliente}}/g, client.name)
-          .replace(/{{nome_instancia}}/g, client.instanceName)
-          .replace(/{{link_painel}}/g, clientLink);
+        if (emailCfg.enabled && emailCfg.notifyOnDisconnect !== false && emailCfg.recipientEmails) {
+          const subject = `🔴 [ALERTA EVOCONNECT] Conexão Desconectada - ${client.name} (${client.instanceName})`;
+          const htmlContent = `
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden; background: #ffffff;">
+              <div style="background: #ef4444; color: white; padding: 20px; text-align: center;">
+                <h1 style="margin: 0; font-size: 20px;">⚠️ Instância WhatsApp Desconectada</h1>
+              </div>
+              <div style="padding: 24px; color: #1e293b; line-height: 1.6;">
+                <p>Atenção! Identificamos que a seguinte conexão do WhatsApp foi <strong>DESCONECTADA</strong>:</p>
+                <table style="width: 100%; border-collapse: collapse; margin: 20px 0; background: #f8fafc; border-radius: 6px;">
+                  <tr><td style="padding: 10px; border-bottom: 1px solid #e2e8f0;"><strong>Cliente:</strong></td><td style="padding: 10px; border-bottom: 1px solid #e2e8f0;"><strong>${client.name}</strong></td></tr>
+                  <tr><td style="padding: 10px; border-bottom: 1px solid #e2e8f0;"><strong>Instância:</strong></td><td style="padding: 10px; border-bottom: 1px solid #e2e8f0;"><code>${client.instanceName}</code></td></tr>
+                  <tr><td style="padding: 10px;"><strong>Servidor:</strong></td><td style="padding: 10px;">${clientServer.name}</td></tr>
+                </table>
+                <div style="text-align: center; margin: 30px 0;">
+                  <a href="${clientLink}" target="_blank" style="background: #059669; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">🔗 Acessar Link de Reconexão do Cliente</a>
+                </div>
+                <p style="font-size: 13px; color: #64748b;">Este alerta automático foi gerado pelo sistema EvoConnect.</p>
+              </div>
+            </div>
+          `;
+          sendEmailNotification(emailCfg, { subject, htmlContent });
+        }
+      }
 
-        const sent = await sendEVOMessage(masterServer, db.masterInstance.instanceName, client.phone, message);
-        if (sent) client.lastAlertSentAt = now;
+      // 2. ALERTA DE RECONEXÃO POR E-MAIL (🟢)
+      if (previousStatus === 'close' && newStatus === 'open') {
+        console.log(`[ALERTAS] Instância ${client.instanceName} (${client.name}) RECONECTADA!`);
+
+        if (emailCfg.enabled && emailCfg.notifyOnConnect !== false && emailCfg.recipientEmails) {
+          const subject = `🟢 [EVOCONNECT] Conexão Restabelecida - ${client.name} (${client.instanceName})`;
+          const htmlContent = `
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden; background: #ffffff;">
+              <div style="background: #10b981; color: white; padding: 20px; text-align: center;">
+                <h1 style="margin: 0; font-size: 20px;">🎉 Instância WhatsApp Reconectada!</h1>
+              </div>
+              <div style="padding: 24px; color: #1e293b; line-height: 1.6;">
+                <p>Ótimas notícias! A conexão do WhatsApp foi <strong>RESTABELECIDA</strong> com sucesso:</p>
+                <table style="width: 100%; border-collapse: collapse; margin: 20px 0; background: #f8fafc; border-radius: 6px;">
+                  <tr><td style="padding: 10px; border-bottom: 1px solid #e2e8f0;"><strong>Cliente:</strong></td><td style="padding: 10px; border-bottom: 1px solid #e2e8f0;"><strong>${client.name}</strong></td></tr>
+                  <tr><td style="padding: 10px; border-bottom: 1px solid #e2e8f0;"><strong>Instância:</strong></td><td style="padding: 10px; border-bottom: 1px solid #e2e8f0;"><code>${client.instanceName}</code></td></tr>
+                  <tr><td style="padding: 10px;"><strong>Servidor:</strong></td><td style="padding: 10px;">${clientServer.name}</td></tr>
+                </table>
+                <p style="font-size: 13px; color: #64748b;">Este alerta automático foi gerado pelo sistema EvoConnect.</p>
+              </div>
+            </div>
+          `;
+          sendEmailNotification(emailCfg, { subject, htmlContent });
+        }
+      }
+
+      // 3. WHATSAPP MASTER ALERT (se o cliente tiver telefone cadastrado)
+      if (client.phone && masterServer && db.masterInstance.instanceName) {
+        const wasAlertedRecently = client.lastAlertSentAt && (now - client.lastAlertSentAt < ONE_HOUR);
+        if (client.lastStatus === 'close' && (previousStatus === 'open' || !wasAlertedRecently)) {
+          let message = db.masterInstance.template || 'Atenção! Seu WhatsApp desconectou. Acesse {{link_painel}} para reconectar.';
+          message = message
+            .replace(/{{nome_cliente}}/g, client.name)
+            .replace(/{{nome_instancia}}/g, client.instanceName)
+            .replace(/{{link_painel}}/g, clientLink);
+
+          const sent = await sendEVOMessage(masterServer, db.masterInstance.instanceName, client.phone, message);
+          if (sent) client.lastAlertSentAt = now;
+        }
       }
     }
     saveDB(db);
@@ -650,6 +769,7 @@ app.get('/api/admin/overview', async (req, res) => {
     connectedCount,
     disconnectedCount,
     masterInstance: db.masterInstance,
+    emailSettings: db.emailSettings || defaultEmailSettings,
     clients: clientStatuses,
     servers: db.servers,
     settings: db.settings
@@ -780,6 +900,78 @@ app.post('/api/admin/master-instance/test', async (req, res) => {
   }
 });
 
+// Configurações de E-mail SMTP
+app.get('/api/admin/email-settings', (req, res) => {
+  const db = loadDB();
+  res.json(db.emailSettings || defaultEmailSettings);
+});
+
+app.post('/api/admin/email-settings', (req, res) => {
+  const db = loadDB();
+  const { enabled, host, port, secure, user, pass, fromName, fromEmail, recipientEmails, notifyOnDisconnect, notifyOnConnect } = req.body;
+
+  db.emailSettings = {
+    enabled: enabled === true || enabled === 'true',
+    host: host || '',
+    port: parseInt(port, 10) || 587,
+    secure: secure === true || secure === 'true',
+    user: user || '',
+    pass: pass !== undefined && pass !== '' ? pass : (db.emailSettings?.pass || ''),
+    fromName: fromName || 'EvoConnect Alertas',
+    fromEmail: fromEmail || user || '',
+    recipientEmails: recipientEmails || '',
+    notifyOnDisconnect: notifyOnDisconnect !== false && notifyOnDisconnect !== 'false',
+    notifyOnConnect: notifyOnConnect !== false && notifyOnConnect !== 'false'
+  };
+
+  saveDB(db);
+  res.json({ ok: true, emailSettings: db.emailSettings });
+});
+
+app.post('/api/admin/email-settings/test', async (req, res) => {
+  const { host, port, secure, user, pass, fromName, fromEmail, recipientEmails } = req.body;
+  const db = loadDB();
+
+  const testConfig = {
+    enabled: true,
+    host: host || db.emailSettings?.host,
+    port: port || db.emailSettings?.port || 587,
+    secure: secure !== undefined ? (secure === true || secure === 'true') : db.emailSettings?.secure,
+    user: user || db.emailSettings?.user,
+    pass: pass || db.emailSettings?.pass,
+    fromName: fromName || db.emailSettings?.fromName || 'EvoConnect Alertas',
+    fromEmail: fromEmail || db.emailSettings?.fromEmail || user || db.emailSettings?.user,
+    recipientEmails: recipientEmails || db.emailSettings?.recipientEmails
+  };
+
+  if (!testConfig.host || !testConfig.user || !testConfig.pass || !testConfig.recipientEmails) {
+    return res.status(400).json({ error: 'Preencha o servidor SMTP, Usuário, Senha e E-mail de destino para realizar o teste.' });
+  }
+
+  const subject = `🧪 [TESTE EVOCONNECT] Notificações por E-mail Funcionando!`;
+  const htmlContent = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden; background: #ffffff;">
+      <div style="background: #059669; color: white; padding: 20px; text-align: center;">
+        <h1 style="margin: 0; font-size: 20px;">🧪 Teste de E-mail EvoConnect</h1>
+      </div>
+      <div style="padding: 24px; color: #1e293b; line-height: 1.6;">
+        <p>Parabéns! Suas configurações de e-mail SMTP estão <strong>100% funcionais</strong>.</p>
+        <p>A partir de agora, você receberá notificações automáticas quando conexões do WhatsApp caírem ou forem restabelecidas.</p>
+        <hr style="border: 0; border-top: 1px solid #e2e8f0; margin: 20px 0;">
+        <p style="font-size: 12px; color: #64748b;">Enviado via EvoConnect Dashboard em ${new Date().toLocaleString('pt-BR')}.</p>
+      </div>
+    </div>
+  `;
+
+  const result = await sendEmailNotification(testConfig, { subject, htmlContent });
+
+  if (result.ok) {
+    return res.json({ ok: true, message: `E-mail de teste enviado com sucesso para: ${testConfig.recipientEmails}` });
+  } else {
+    return res.status(500).json({ error: `Falha ao enviar e-mail: ${result.error}` });
+  }
+});
+
 app.post('/api/admin/settings', (req, res) => {
   const db = loadDB();
   const { agencyName, logoUrl, primaryColor, adminPassword } = req.body;
@@ -788,7 +980,7 @@ app.post('/api/admin/settings', (req, res) => {
     agencyName: agencyName || db.settings.agencyName || 'EvoConnect',
     logoUrl: logoUrl !== undefined ? logoUrl : db.settings.logoUrl,
     primaryColor: primaryColor || db.settings.primaryColor || '#059669',
-    adminPassword: adminPassword || db.settings.adminPassword || 'admin',
+    adminPassword: adminPassword || db.settings.adminPassword || '*Dmove#10',
     apiKey: db.settings.apiKey || 'evoconnect_secret_api_key_2026'
   };
 
