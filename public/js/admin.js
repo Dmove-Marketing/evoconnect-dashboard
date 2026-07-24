@@ -11,6 +11,18 @@ document.addEventListener('DOMContentLoaded', () => {
   const tabBtns = document.querySelectorAll('.tab-btn');
   const tabContents = document.querySelectorAll('.tab-content');
 
+  // Dados armazenados em memória para filtros
+  let rawClientsData = [];
+  let rawServersData = [];
+
+  // Elementos de Filtro
+  const overviewSearchInput = document.getElementById('overview-search-input');
+  const overviewServerFilter = document.getElementById('overview-server-filter');
+  const overviewStatusFilter = document.getElementById('overview-status-filter');
+
+  const clientsSearchInput = document.getElementById('clients-search-input');
+  const clientsServerFilter = document.getElementById('clients-server-filter');
+
   // Elementos da Aba Overview
   const statTotalClients = document.getElementById('stat-total-clients');
   const statConnected = document.getElementById('stat-connected');
@@ -132,24 +144,68 @@ document.addEventListener('DOMContentLoaded', () => {
     fetch('/api/admin/overview')
       .then(res => res.json())
       .then(data => {
+        rawClientsData = data.clients || [];
+        rawServersData = data.servers || [];
+
         statTotalClients.textContent = data.totalClients;
         statConnected.textContent = data.connectedCount;
         statDisconnected.textContent = data.disconnectedCount;
         statTotalServers.textContent = data.totalServers;
 
-        renderOverviewTable(data.clients);
-        renderClientsTable(data.clients);
-        renderServersTable(data.servers);
         populateServerDropdowns(data.servers);
+        applyOverviewFilters();
+        applyClientsFilters();
+        renderServersTable(data.servers);
         populateAlertsTab(data.masterInstance);
         populateSettingsTab(data.settings);
       })
       .catch(err => console.error('Erro ao carregar dados do admin:', err));
   }
 
+  // Lógica de Filtros da Visão Geral
+  function applyOverviewFilters() {
+    const searchTerm = (overviewSearchInput?.value || '').toLowerCase().trim();
+    const selectedServer = overviewServerFilter?.value || '';
+    const selectedStatus = overviewStatusFilter?.value || '';
+
+    const filtered = rawClientsData.filter(c => {
+      const nameMatch = (c.name || '').toLowerCase().includes(searchTerm) || (c.instanceName || '').toLowerCase().includes(searchTerm);
+      const serverMatch = !selectedServer || c.serverId === selectedServer;
+      const statusMatch = !selectedStatus || c.currentStatus === selectedStatus;
+      return nameMatch && serverMatch && statusMatch;
+    });
+
+    renderOverviewTable(filtered);
+  }
+
+  // Lógica de Filtros da Aba Clientes
+  function applyClientsFilters() {
+    const searchTerm = (clientsSearchInput?.value || '').toLowerCase().trim();
+    const selectedServer = clientsServerFilter?.value || '';
+
+    const filtered = rawClientsData.filter(c => {
+      const nameMatch = (c.name || '').toLowerCase().includes(searchTerm) || (c.instanceName || '').toLowerCase().includes(searchTerm);
+      const serverMatch = !selectedServer || c.serverId === selectedServer;
+      return nameMatch && serverMatch;
+    });
+
+    renderClientsTable(filtered);
+  }
+
+  // Event Listeners dos Filtros
+  if (overviewSearchInput) overviewSearchInput.addEventListener('input', applyOverviewFilters);
+  if (overviewServerFilter) overviewServerFilter.addEventListener('change', applyOverviewFilters);
+  if (overviewStatusFilter) overviewStatusFilter.addEventListener('change', applyOverviewFilters);
+
+  if (clientsSearchInput) clientsSearchInput.addEventListener('input', applyClientsFilters);
+  if (clientsServerFilter) clientsServerFilter.addEventListener('change', applyClientsFilters);
+
   function renderOverviewTable(clients) {
     if (!clients || clients.length === 0) {
-      overviewClientsTbody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: var(--text-muted);">Nenhum cliente cadastrado ainda. Clique em "Sincronizar Instâncias" para buscar instâncias existentes na EVO.</td></tr>`;
+      const emptyMsg = rawClientsData.length > 0 
+        ? 'Nenhum cliente encontrado com os filtros aplicados.' 
+        : 'Nenhum cliente cadastrado ainda. Clique em "Sincronizar Instâncias" para buscar instâncias existentes na EVO.';
+      overviewClientsTbody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: var(--text-muted);">${emptyMsg}</td></tr>`;
       return;
     }
 
@@ -182,7 +238,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function renderClientsTable(clients) {
     if (!clients || clients.length === 0) {
-      clientsTbody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: var(--text-muted);">Nenhum cliente cadastrado.</td></tr>`;
+      const emptyMsg = rawClientsData.length > 0 
+        ? 'Nenhum cliente encontrado com os filtros aplicados.' 
+        : 'Nenhum cliente cadastrado.';
+      clientsTbody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: var(--text-muted);">${emptyMsg}</td></tr>`;
       return;
     }
 
@@ -231,6 +290,18 @@ document.addEventListener('DOMContentLoaded', () => {
     const options = servers.map(s => `<option value="${s.id}">${escapeHtml(s.name)} (${s.version.toUpperCase()})</option>`).join('');
     clientServerSelect.innerHTML = `<option value="">Selecione um servidor...</option>` + options;
     masterServerSelect.innerHTML = `<option value="">Selecione o servidor...</option>` + options;
+
+    const currentOverviewVal = overviewServerFilter ? overviewServerFilter.value : '';
+    const currentClientsVal = clientsServerFilter ? clientsServerFilter.value : '';
+
+    if (overviewServerFilter) {
+      overviewServerFilter.innerHTML = `<option value="">Todas as APIs / Servidores</option>` + options;
+      if (currentOverviewVal) overviewServerFilter.value = currentOverviewVal;
+    }
+    if (clientsServerFilter) {
+      clientsServerFilter.innerHTML = `<option value="">Todas as APIs / Servidores</option>` + options;
+      if (currentClientsVal) clientsServerFilter.value = currentClientsVal;
+    }
   }
 
   function populateAlertsTab(master) {

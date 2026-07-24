@@ -94,6 +94,19 @@
             </button>
           </div>
           
+          <!-- Filtros da Visão Geral -->
+          <div style="display: grid; grid-template-columns: 1fr minmax(180px, 240px) minmax(160px, 200px); gap: 0.75rem; margin-bottom: 1.25rem;">
+            <input type="text" id="overview-search-input" class="form-control" placeholder="🔍 Buscar por nome do cliente ou instância..." style="font-size: 0.85rem;">
+            <select id="overview-server-filter" class="form-control" style="font-size: 0.85rem;">
+              <option value="">Todas as APIs / Servidores</option>
+            </select>
+            <select id="overview-status-filter" class="form-control" style="font-size: 0.85rem;">
+              <option value="">Todos os Status</option>
+              <option value="CONNECTED">🟢 Conectados</option>
+              <option value="DISCONNECTED">🔴 Desconectados</option>
+            </select>
+          </div>
+
           <table class="data-table">
             <thead>
               <tr>
@@ -157,6 +170,14 @@
           <div class="glass-card">
             <h3 style="font-family: var(--font-heading); margin-bottom: 1.25rem;">Clientes & Instâncias Cadastradas</h3>
             
+            <!-- Filtros da Tabela de Clientes -->
+            <div style="display: grid; grid-template-columns: 1fr minmax(180px, 220px); gap: 0.75rem; margin-bottom: 1.25rem;">
+              <input type="text" id="clients-search-input" class="form-control" placeholder="🔍 Buscar por nome do cliente ou instância..." style="font-size: 0.85rem;">
+              <select id="clients-server-filter" class="form-control" style="font-size: 0.85rem;">
+                <option value="">Todas as APIs / Servidores</option>
+              </select>
+            </div>
+
             <table class="data-table">
               <thead>
                 <tr>
