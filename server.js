@@ -275,7 +275,8 @@ async function getEVOStatus(server, instanceName, clientEvoToken = '', skipDeepC
   });
 
   if (res.ok && res.data?.data) {
-    const isConnected = res.data.data.LoggedIn === true || res.data.data.Connected === true;
+    // No Evolution Go: LoggedIn === true indica se o WhatsApp está realmente autenticado e conectado
+    const isConnected = res.data.data.LoggedIn === true;
     return {
       status: isConnected ? 'CONNECTED' : 'DISCONNECTED',
       phone: res.data.data.Jid || '',
