@@ -144,12 +144,11 @@ async function evoFetch(url, options = {}) {
   }
 }
 
-// Helper para testar a saude profunda do socket (Deep Health Check para detectar Conexões Fantasmas)
+// Helper para testar a saude profunda do socket (Deep Health Check para Baileys Node v1 / v2)
 async function checkDeepSocketHealth(server, instanceName, clientEvoToken = '') {
   if (!server || !server.url || !server.apiKey) return false;
   const cleanUrl = server.url.replace(/\/$/, '');
 
-  // Executa uma consulta leve de verificacao de numero no WhatsApp
   const testUrl = `${cleanUrl}/chat/whatsappNumbers/${encodeURIComponent(instanceName)}`;
   const res = await evoFetch(testUrl, {
     method: 'POST',
@@ -171,7 +170,7 @@ async function restartEVOInstance(server, instanceName, clientEvoToken = '') {
   const cleanUrl = server.url.replace(/\/$/, '');
   const activeKey = clientEvoToken || server.apiKey;
 
-  // 1. Tenta POST /instance/restart/:name (v2 e v1)
+  // 1. Tenta POST /instance/restart/:name (v2 e v1 Node)
   let res = await evoFetch(`${cleanUrl}/instance/restart/${encodeURIComponent(instanceName)}`, {
     method: 'POST',
     headers: { 'apikey': server.apiKey }
@@ -179,17 +178,21 @@ async function restartEVOInstance(server, instanceName, clientEvoToken = '') {
 
   if (res.ok) return { ok: true, data: res.data };
 
-  // 2. Tenta GET /instance/connect/:name (v1 e v2 reload)
+  // 2. Tenta GET /instance/connect/:name (v1 e v2 Node reload)
   res = await evoFetch(`${cleanUrl}/instance/connect/${encodeURIComponent(instanceName)}`, {
     headers: { 'apikey': server.apiKey }
   });
 
   if (res.ok) return { ok: true, data: res.data };
 
-  // 3. Evolution Go: POST /instance/connect
+  // 3. Evolution Go: POST /instance/connect COM CORPO JSON {}
   res = await evoFetch(`${cleanUrl}/instance/connect`, {
     method: 'POST',
-    headers: { 'apikey': activeKey }
+    headers: { 
+      'Content-Type': 'application/json',
+      'apikey': activeKey 
+    },
+    body: JSON.stringify({})
   });
 
   return { ok: res.ok, data: res.data };
@@ -265,15 +268,14 @@ async function getEVOStatus(server, instanceName, clientEvoToken = '', skipDeepC
 
   const cleanUrl = server.url.replace(/\/$/, '');
 
-  // Suporte a Evolution Go: tenta buscar status via /instance/status com o token da instância
+  // Suporte a Evolution Go: tenta buscar status via /instance/status com o token da instância ou apiKey
   const activeKey = clientEvoToken || server.apiKey;
   let res = await evoFetch(`${cleanUrl}/instance/status`, {
     headers: { 'apikey': activeKey }
   });
 
   if (res.ok && res.data?.data) {
-    // No Evolution Go: LoggedIn indica se o WhatsApp está realmente autenticado e conectado
-    const isConnected = res.data.data.LoggedIn === true;
+    const isConnected = res.data.data.LoggedIn === true || res.data.data.Connected === true;
     return {
       status: isConnected ? 'CONNECTED' : 'DISCONNECTED',
       phone: res.data.data.Jid || '',
@@ -289,7 +291,7 @@ async function getEVOStatus(server, instanceName, clientEvoToken = '', skipDeepC
   if (res.ok) {
     const stateData = res.data?.instance?.state || res.data?.instance?.status || res.data?.state || res.data?.status;
     if (stateData === 'open' || stateData === 'connected') {
-      // Deep Health Check para identificar socket travado (Conexão Fantasma)
+      // Deep Health Check para identificar socket travado (apenas v1/v2 Node)
       if (!skipDeepCheck) {
         const isSocketAlive = await checkDeepSocketHealth(server, instanceName, clientEvoToken);
         if (!isSocketAlive) {
@@ -357,17 +359,14 @@ async function getEVOQRCode(server, instanceName, clientEvoToken = '') {
   }
 
   if (qrCode && typeof qrCode === 'string') {
-    // 1. Se a resposta já for uma imagem data:image/png;base64
     if (qrCode.startsWith('data:image')) {
       return { ok: true, qrCode, pairingCode };
     }
     
-    // 2. Se for uma string base64 pura de imagem PNG
     if (qrCode.startsWith('iVBORw0KGgo')) {
       return { ok: true, qrCode: `data:image/png;base64,${qrCode}`, pairingCode };
     }
 
-    // 3. Se for a string bruta de QR Code do Baileys (iniciando com 2@ ou texto livre)
     try {
       const generatedPng = await QRCode.toDataURL(qrCode, { margin: 2, width: 320 });
       return { ok: true, qrCode: generatedPng, pairingCode };
@@ -479,7 +478,6 @@ async function createEVOInstance(server, instanceName) {
   const cleanUrl = server.url.replace(/\/$/, '');
   const generatedToken = `token-${Math.random().toString(36).substring(2, 12)}${Date.now().toString(36)}`;
 
-  // Payload universal (funciona tanto para Evolution Baileys v1/v2 quanto Evolution Go)
   const payload = {
     instanceName: instanceName,
     name: instanceName,
@@ -514,11 +512,9 @@ async function syncAllInstances() {
 
       const cleanRemoteName = String(remoteInst.name).trim();
 
-      // Busca cliente existente no mesmo servidor ou por nome de instância
       let exists = db.clients.find(c => c.serverId === server.id && String(c.instanceName).toLowerCase() === cleanRemoteName.toLowerCase());
 
       if (!exists) {
-        // Se não encontrou no mesmo servidor, busca em qualquer servidor para evitar duplicidade
         exists = db.clients.find(c => String(c.instanceName).toLowerCase() === cleanRemoteName.toLowerCase());
       }
 
@@ -539,7 +535,6 @@ async function syncAllInstances() {
         db.clients.push(newClient);
         addedCount++;
       } else {
-        // Atualiza a associação do servidor e token Go caso necessário
         if (remoteInst.token && (!exists.evoGoToken || exists.evoGoToken !== remoteInst.token)) {
           exists.evoGoToken = remoteInst.token;
         }
@@ -593,7 +588,6 @@ setInterval(async () => {
       if (newStatus === 'ghost') {
         console.log(`[ALERTAS] 👻 Conexão Fantasma detectada na instância ${client.instanceName} (${client.name}). Tentando auto-restart...`);
         
-        // Dispara auto-restart do socket para ressuscitar a conexão
         await restartEVOInstance(clientServer, client.instanceName, client.evoGoToken);
 
         const wasAlertedRecently = client.lastAlertSentAt && (now - client.lastAlertSentAt < ONE_HOUR);
