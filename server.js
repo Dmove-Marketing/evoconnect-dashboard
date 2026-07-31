@@ -934,8 +934,9 @@ app.post('/api/admin/clients/:id/chatwoot', async (req, res) => {
     const protocol = req.headers['x-forwarded-proto'] || 'https';
     const baseUrl = `${protocol}://${hostHeader}`;
 
+    const chatwootWebhookUrl = `${baseUrl}/api/webhook/chatwoot/${client.id}`;
+
     if (autoCreateInbox || !cwConfig.inboxId) {
-      const chatwootWebhookUrl = `${baseUrl}/api/webhook/chatwoot/${client.id}`;
       const inboxName = `WhatsApp - ${client.name} (${client.instanceName})`;
       
       const inboxRes = await autoCreateChatwootInbox(cwConfig, inboxName, chatwootWebhookUrl);
@@ -944,6 +945,18 @@ app.post('/api/admin/clients/:id/chatwoot', async (req, res) => {
       } else if (!cwConfig.inboxId) {
         return res.status(400).json({ error: `Falha ao criar Inbox no Chatwoot automaticamente: ${inboxRes.error}` });
       }
+    } else {
+      // Se a Inbox já existir, atualiza a webhook_url no Chatwoot automaticamente
+      try {
+        await chatwootFetch(cwConfig.url, cwConfig.token, `/api/v1/accounts/${cwConfig.accountId}/inboxes/${cwConfig.inboxId}`, {
+          method: 'PUT',
+          body: JSON.stringify({
+            channel: {
+              webhook_url: chatwootWebhookUrl
+            }
+          })
+        });
+      } catch (err) {}
     }
 
     const clientServer = db.servers.find(s => s.id === client.serverId);
