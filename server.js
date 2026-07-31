@@ -6,6 +6,11 @@ const fs = require('fs');
 const path = require('path');
 const QRCode = require('qrcode');
 const nodemailer = require('nodemailer');
+const { Pool } = require('pg');
+
+const pgPool = new Pool({
+  connectionString: process.env.EVOGO_POSTGRES_URL || 'postgresql://postgres:d8656473b5e4e47185f1547547c15be2@evogo_postgres:5432/evolution_go_users'
+});
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -963,17 +968,14 @@ app.post('/api/admin/clients/:id/chatwoot', async (req, res) => {
     if (clientServer) {
       const evoWebhookUrl = `${baseUrl}/api/webhook/evogo/${client.id}`;
       try {
-        const activeKey = client.evoGoToken || clientServer.apiKey;
-        await evoFetch(`${clientServer.url.replace(/\/$/, '')}/instance/webhook`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'apikey': activeKey },
-          body: JSON.stringify({
-            enabled: true,
-            url: evoWebhookUrl,
-            events: ['MESSAGE', 'MESSAGES_UPSERT']
-          })
-        });
-      } catch (err) {}
+        await pgPool.query(
+          `UPDATE instances SET webhook = $1, events = 'MESSAGE' WHERE name = $2 OR token = $3`,
+          [cwConfig.enabled ? evoWebhookUrl : '', client.instanceName, client.evoGoToken]
+        );
+        console.log(`[CHATWOOT] Postgres webhook configurado para ${client.instanceName} -> ${cwConfig.enabled ? evoWebhookUrl : 'VAZIO'}`);
+      } catch (err) {
+        console.error('[CHATWOOT] Falha ao atualizar webhook no Postgres:', err.message);
+      }
     }
   }
 
