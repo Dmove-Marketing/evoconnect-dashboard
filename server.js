@@ -624,32 +624,42 @@ setInterval(async () => {
         }
       }
 
-      // 2. ALERTA DE DESCONEXÃO POR E-MAIL (🔴)
-      if (previousStatus === 'open' && newStatus === 'close') {
-        console.log(`[ALERTAS] Instância ${client.instanceName} (${client.name}) DESCONECTOU!`);
+      // 2. AUTO-HEALING & ALERTA DE DESCONEXÃO POR E-MAIL (🔴)
+      if (newStatus === 'close') {
+        const THREE_MINUTES = 3 * 60 * 1000;
+        const lastHeal = client.lastAutoHealAt || 0;
+        if (now - lastHeal > THREE_MINUTES) {
+          console.log(`[AUTO-HEALING] ⚡ Disparando reconexão automática para ${client.instanceName} (${client.name})...`);
+          client.lastAutoHealAt = now;
+          restartEVOInstance(clientServer, client.instanceName, client.evoGoToken).catch(() => {});
+        }
 
-        if (emailCfg.enabled && emailCfg.notifyOnDisconnect !== false && emailCfg.recipientEmails) {
-          const subject = `🔴 [ALERTA EVOCONNECT] Conexão Desconectada - ${client.name} (${client.instanceName})`;
-          const htmlContent = `
-            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden; background: #ffffff;">
-              <div style="background: #ef4444; color: white; padding: 20px; text-align: center;">
-                <h1 style="margin: 0; font-size: 20px;">⚠️ Instância WhatsApp Desconectada</h1>
-              </div>
-              <div style="padding: 24px; color: #1e293b; line-height: 1.6;">
-                <p>Atenção! Identificamos que a seguinte conexão do WhatsApp foi <strong>DESCONECTADA</strong>:</p>
-                <table style="width: 100%; border-collapse: collapse; margin: 20px 0; background: #f8fafc; border-radius: 6px;">
-                  <tr><td style="padding: 10px; border-bottom: 1px solid #e2e8f0;"><strong>Cliente:</strong></td><td style="padding: 10px; border-bottom: 1px solid #e2e8f0;"><strong>${client.name}</strong></td></tr>
-                  <tr><td style="padding: 10px; border-bottom: 1px solid #e2e8f0;"><strong>Instância:</strong></td><td style="padding: 10px; border-bottom: 1px solid #e2e8f0;"><code>${client.instanceName}</code></td></tr>
-                  <tr><td style="padding: 10px;"><strong>Servidor:</strong></td><td style="padding: 10px;">${clientServer.name}</td></tr>
-                </table>
-                <div style="text-align: center; margin: 30px 0;">
-                  <a href="${clientLink}" target="_blank" style="background: #059669; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">🔗 Acessar Link de Reconexão do Cliente</a>
+        if (previousStatus === 'open') {
+          console.log(`[ALERTAS] Instância ${client.instanceName} (${client.name}) DESCONECTOU!`);
+
+          if (emailCfg.enabled && emailCfg.notifyOnDisconnect !== false && emailCfg.recipientEmails) {
+            const subject = `🔴 [ALERTA EVOCONNECT] Conexão Desconectada - ${client.name} (${client.instanceName})`;
+            const htmlContent = `
+              <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden; background: #ffffff;">
+                <div style="background: #ef4444; color: white; padding: 20px; text-align: center;">
+                  <h1 style="margin: 0; font-size: 20px;">⚠️ Instância WhatsApp Desconectada</h1>
                 </div>
-                <p style="font-size: 13px; color: #64748b;">Este alerta automático foi gerado pelo sistema EvoConnect.</p>
+                <div style="padding: 24px; color: #1e293b; line-height: 1.6;">
+                  <p>Atenção! Identificamos que a seguinte conexão do WhatsApp foi <strong>DESCONECTADA</strong>:</p>
+                  <table style="width: 100%; border-collapse: collapse; margin: 20px 0; background: #f8fafc; border-radius: 6px;">
+                    <tr><td style="padding: 10px; border-bottom: 1px solid #e2e8f0;"><strong>Cliente:</strong></td><td style="padding: 10px; border-bottom: 1px solid #e2e8f0;"><strong>${client.name}</strong></td></tr>
+                    <tr><td style="padding: 10px; border-bottom: 1px solid #e2e8f0;"><strong>Instância:</strong></td><td style="padding: 10px; border-bottom: 1px solid #e2e8f0;"><code>${client.instanceName}</code></td></tr>
+                    <tr><td style="padding: 10px;"><strong>Servidor:</strong></td><td style="padding: 10px;">${clientServer.name}</td></tr>
+                  </table>
+                  <div style="text-align: center; margin: 30px 0;">
+                    <a href="${clientLink}" target="_blank" style="background: #059669; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">🔗 Acessar Link de Reconexão do Cliente</a>
+                  </div>
+                  <p style="font-size: 13px; color: #64748b;">O EvoConnect já disparou o protocolo de auto-reconexão automática em segundo plano.</p>
+                </div>
               </div>
-            </div>
-          `;
-          sendEmailNotification(emailCfg, { subject, htmlContent });
+            `;
+            sendEmailNotification(emailCfg, { subject, htmlContent });
+          }
         }
       }
 
