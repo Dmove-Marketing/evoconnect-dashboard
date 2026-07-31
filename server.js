@@ -711,6 +711,266 @@ setInterval(async () => {
 }, 45000);
 
 // ----------------------------------------------------
+// INTEGRAÇÃO BIDIRECIONAL COM CHATWOOT (BRIDGE)
+// ----------------------------------------------------
+
+async function chatwootFetch(baseUrl, token, endpoint, options = {}) {
+  const url = `${baseUrl.replace(/\/$/, '')}${endpoint}`;
+  const headers = {
+    'api_access_token': token,
+    'Content-Type': 'application/json',
+    ...(options.headers || {})
+  };
+
+  try {
+    const res = await fetch(url, { ...options, headers });
+    const data = await res.json().catch(() => null);
+    return { ok: res.ok, status: res.status, data };
+  } catch (err) {
+    return { ok: false, status: 500, error: err.message };
+  }
+}
+
+// 1. Criar ou Buscar Contato no Chatwoot
+async function getOrCreateChatwootContact(cwConfig, phone, name) {
+  const cleanPhone = '+' + phone.replace(/\D/g, '');
+  const searchRes = await chatwootFetch(cwConfig.url, cwConfig.token, `/api/v1/accounts/${cwConfig.accountId}/contacts/search?q=${encodeURIComponent(cleanPhone)}`);
+  
+  if (searchRes.ok && searchRes.data?.payload?.length > 0) {
+    return searchRes.data.payload[0];
+  }
+
+  const createRes = await chatwootFetch(cwConfig.url, cwConfig.token, `/api/v1/accounts/${cwConfig.accountId}/contacts`, {
+    method: 'POST',
+    body: JSON.stringify({
+      name: name || cleanPhone,
+      phone_number: cleanPhone
+    })
+  });
+
+  if (createRes.ok) {
+    return createRes.data?.payload?.contact || createRes.data;
+  }
+  return null;
+}
+
+// 2. Criar ou Buscar Conversa no Chatwoot
+async function getOrCreateChatwootConversation(cwConfig, contactId, inboxId) {
+  const searchRes = await chatwootFetch(cwConfig.url, cwConfig.token, `/api/v1/accounts/${cwConfig.accountId}/contacts/${contactId}/conversations`);
+  
+  if (searchRes.ok && searchRes.data?.payload?.length > 0) {
+    const openConv = searchRes.data.payload.find(c => String(c.inbox_id) === String(inboxId) && c.status !== 'resolved');
+    if (openConv) return openConv;
+  }
+
+  const createRes = await chatwootFetch(cwConfig.url, cwConfig.token, `/api/v1/accounts/${cwConfig.accountId}/conversations`, {
+    method: 'POST',
+    body: JSON.stringify({
+      source_id: contactId,
+      inbox_id: parseInt(inboxId, 10),
+      contact_id: contactId,
+      status: cwConfig.conversationPending ? 'pending' : 'open'
+    })
+  });
+
+  if (createRes.ok) {
+    return createRes.data;
+  }
+  return null;
+}
+
+// 3. Auto-Criar Caixa de Entrada (API Inbox) no Chatwoot
+async function autoCreateChatwootInbox(cwConfig, inboxName, webhookCallbackUrl) {
+  const payload = {
+    name: inboxName || 'WhatsApp Evolution Go',
+    channel: {
+      type: 'api',
+      webhook_url: webhookCallbackUrl
+    }
+  };
+
+  const res = await chatwootFetch(cwConfig.url, cwConfig.token, `/api/v1/accounts/${cwConfig.accountId}/inboxes`, {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  });
+
+  if (res.ok) {
+    return { ok: true, inbox: res.data };
+  }
+  return { ok: false, error: res.data?.message || res.error || 'Falha ao criar Inbox no Chatwoot' };
+}
+
+// ----------------------------------------------------
+// WEBHOOKS PARA CHATWOOT & EVOLUTION GO
+// ----------------------------------------------------
+
+// 1. Webhook Recebido da Evolution Go (Inbound: WhatsApp -> Chatwoot)
+app.post('/api/webhook/evogo/:clientId', async (req, res) => {
+  res.status(200).json({ status: 'SUCCESS' });
+
+  const clientId = req.params.clientId;
+  const db = loadDB();
+  const client = db.clients.find(c => c.id === clientId || c.token === clientId || c.instanceName.toLowerCase() === clientId.toLowerCase());
+
+  if (!client || !client.chatwoot || !client.chatwoot.enabled || !client.chatwoot.url || !client.chatwoot.token || !client.chatwoot.accountId || !client.chatwoot.inboxId) {
+    return;
+  }
+
+  const payload = req.body || {};
+  const event = payload.event || payload.Event || payload.type;
+  
+  if (event && !['MESSAGES_UPSERT', 'MESSAGE', 'MESSAGES.UPSERT'].includes(String(event).toUpperCase())) {
+    return;
+  }
+
+  const data = payload.data || payload;
+  const key = data.key || data.Key || {};
+  
+  if (key.fromMe || key.FromMe) return;
+
+  const senderJid = key.remoteJid || key.RemoteJid || data.from || data.From || '';
+  if (!senderJid || senderJid.includes('@g.us')) return;
+
+  const cleanPhone = senderJid.split('@')[0].split(':')[0].replace(/\D/g, '');
+  if (!cleanPhone) return;
+
+  const pushName = data.pushName || data.PushName || cleanPhone;
+  
+  let text = data.message?.conversation || 
+             data.message?.extendedTextMessage?.text || 
+             data.message?.imageMessage?.caption || 
+             data.message?.videoMessage?.caption || 
+             data.message?.documentMessage?.caption || 
+             data.text || data.TextMessage?.text || '';
+
+  const mediaType = data.messageType || data.type;
+  if (!text && mediaType) {
+    text = `[${String(mediaType).toUpperCase()}]`;
+  }
+
+  if (!text) text = '[Mensagem do WhatsApp]';
+
+  try {
+    const contact = await getOrCreateChatwootContact(client.chatwoot, cleanPhone, pushName);
+    if (!contact) return;
+
+    const conversation = await getOrCreateChatwootConversation(client.chatwoot, contact.id, client.chatwoot.inboxId);
+    if (!conversation) return;
+
+    await chatwootFetch(client.chatwoot.url, client.chatwoot.token, `/api/v1/accounts/${client.chatwoot.accountId}/conversations/${conversation.id}/messages`, {
+      method: 'POST',
+      body: JSON.stringify({
+        content: text,
+        message_type: 'incoming',
+        private: false
+      })
+    });
+    console.log(`[CHATWOOT BRIDGE] 📩 Mensagem de ${cleanPhone} entregue ao Chatwoot para a instância ${client.instanceName}`);
+  } catch (err) {
+    console.error(`[CHATWOOT BRIDGE ERROR] Erro ao entregar mensagem ao Chatwoot:`, err.message);
+  }
+});
+
+// 2. Webhook Recebido do Chatwoot (Outbound: Atendente Chatwoot -> WhatsApp via Evolution Go)
+app.post('/api/webhook/chatwoot/:clientId', async (req, res) => {
+  res.status(200).json({ status: 'SUCCESS' });
+
+  const clientId = req.params.clientId;
+  const db = loadDB();
+  const client = db.clients.find(c => c.id === clientId || c.token === clientId || c.instanceName.toLowerCase() === clientId.toLowerCase());
+
+  if (!client) return;
+
+  const payload = req.body || {};
+  const event = payload.event;
+
+  if (event !== 'message_created' || payload.message_type !== 'outgoing' || payload.private) {
+    return;
+  }
+
+  const text = payload.content || '';
+  const conversation = payload.conversation || {};
+  const contact = payload.sender || payload.contact || conversation.contact || {};
+  const rawPhone = contact.phone_number || contact.identifier || '';
+  const cleanPhone = rawPhone.replace(/\D/g, '');
+
+  if (!cleanPhone || !text) return;
+
+  const clientServer = db.servers.find(s => s.id === client.serverId);
+  if (!clientServer) return;
+
+  try {
+    console.log(`[CHATWOOT BRIDGE] 📤 Enviando resposta do atendente para ${cleanPhone} via Evolution Go (${client.instanceName})...`);
+    await sendEVOMessage(clientServer, client.instanceName, cleanPhone, text);
+  } catch (err) {
+    console.error(`[CHATWOOT BRIDGE ERROR] Falha ao enviar resposta para Evolution Go:`, err.message);
+  }
+});
+
+// 3. Salvar e Testar Configuração Chatwoot do Cliente
+app.post('/api/admin/clients/:id/chatwoot', async (req, res) => {
+  const db = loadDB();
+  const client = db.clients.find(c => c.id === req.params.id);
+  if (!client) return res.status(404).json({ error: 'Cliente não encontrado' });
+
+  const { enabled, url, accountId, token, inboxId, autoCreateInbox } = req.body;
+
+  let cwConfig = {
+    enabled: enabled === true || enabled === 'true',
+    url: (url || '').replace(/\/$/, ''),
+    accountId: accountId || '',
+    token: token || '',
+    inboxId: inboxId || '',
+    signMsg: req.body.signMsg === true || req.body.signMsg === 'true',
+    reopenConversation: req.body.reopenConversation !== false
+  };
+
+  if (cwConfig.enabled) {
+    if (!cwConfig.url || !cwConfig.accountId || !cwConfig.token) {
+      return res.status(400).json({ error: 'Preencha a URL do Chatwoot, Account ID e Token do Usuário.' });
+    }
+
+    const hostHeader = req.headers.host || 'painel.dmove.com.br';
+    const protocol = req.headers['x-forwarded-proto'] || 'https';
+    const baseUrl = `${protocol}://${hostHeader}`;
+
+    if (autoCreateInbox || !cwConfig.inboxId) {
+      const chatwootWebhookUrl = `${baseUrl}/api/webhook/chatwoot/${client.id}`;
+      const inboxName = `WhatsApp - ${client.name} (${client.instanceName})`;
+      
+      const inboxRes = await autoCreateChatwootInbox(cwConfig, inboxName, chatwootWebhookUrl);
+      if (inboxRes.ok && inboxRes.inbox?.id) {
+        cwConfig.inboxId = String(inboxRes.inbox.id);
+      } else if (!cwConfig.inboxId) {
+        return res.status(400).json({ error: `Falha ao criar Inbox no Chatwoot automaticamente: ${inboxRes.error}` });
+      }
+    }
+
+    const clientServer = db.servers.find(s => s.id === client.serverId);
+    if (clientServer) {
+      const evoWebhookUrl = `${baseUrl}/api/webhook/evogo/${client.id}`;
+      try {
+        const activeKey = client.evoGoToken || clientServer.apiKey;
+        await evoFetch(`${clientServer.url.replace(/\/$/, '')}/instance/webhook`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'apikey': activeKey },
+          body: JSON.stringify({
+            enabled: true,
+            url: evoWebhookUrl,
+            events: ['MESSAGE', 'MESSAGES_UPSERT']
+          })
+        });
+      } catch (err) {}
+    }
+  }
+
+  client.chatwoot = cwConfig;
+  saveDB(db);
+
+  res.json({ ok: true, message: 'Configurações do Chatwoot salvas com sucesso!', chatwoot: client.chatwoot });
+});
+
+// ----------------------------------------------------
 // ROTAS DA API PÚBLICA / CLIENTE
 // ----------------------------------------------------
 

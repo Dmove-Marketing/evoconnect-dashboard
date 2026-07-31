@@ -251,9 +251,14 @@ document.addEventListener('DOMContentLoaded', () => {
             </div>
           </td>
           <td>
-            <button class="btn btn-secondary" onclick="restartInstance('${c.id}')" style="padding: 4px 8px; font-size: 0.78rem; background: rgba(168,85,247,0.15); border: 1px solid #a855f7; color: #c084fc;" title="Reiniciar Socket da Instância">
-              ⚡ Reiniciar
-            </button>
+            <div style="display: flex; gap: 0.4rem;">
+              <button class="btn btn-secondary" onclick="openChatwootModal('${c.id}')" style="padding: 4px 8px; font-size: 0.78rem; background: rgba(59,130,246,0.15); border: 1px solid #3b82f6; color: #60a5fa;" title="Configurar Integração Chatwoot">
+                💬 Chatwoot
+              </button>
+              <button class="btn btn-secondary" onclick="restartInstance('${c.id}')" style="padding: 4px 8px; font-size: 0.78rem; background: rgba(168,85,247,0.15); border: 1px solid #a855f7; color: #c084fc;" title="Reiniciar Socket da Instância">
+                ⚡ Reiniciar
+              </button>
+            </div>
           </td>
         </tr>
       `;
@@ -281,9 +286,14 @@ document.addEventListener('DOMContentLoaded', () => {
           <td><code>${escapeHtml(c.instanceName)}</code></td>
           <td>${tag}</td>
           <td>
-            <button class="btn btn-danger" onclick="deleteClient('${c.id}')" style="padding: 4px 10px; font-size: 0.8rem;">
-              🗑️ Excluir
-            </button>
+            <div style="display: flex; gap: 0.4rem;">
+              <button class="btn btn-secondary" onclick="openChatwootModal('${c.id}')" style="padding: 4px 8px; font-size: 0.78rem; background: rgba(59,130,246,0.15); border: 1px solid #3b82f6; color: #60a5fa;" title="Configurar Chatwoot">
+                💬 Chatwoot
+              </button>
+              <button class="btn btn-danger" onclick="deleteClient('${c.id}')" style="padding: 4px 10px; font-size: 0.8rem;">
+                🗑️ Excluir
+              </button>
+            </div>
           </td>
         </tr>
       `;
@@ -605,6 +615,117 @@ document.addEventListener('DOMContentLoaded', () => {
     fetch(`/api/admin/servers/${id}`, { method: 'DELETE' })
       .then(res => res.json())
       .then(() => loadOverviewData());
+  };
+
+  // ----------------------------------------------------
+  // LÓGICA DO MODAL CHATWOOT
+  // ----------------------------------------------------
+  window.openChatwootModal = function(clientId) {
+    const client = rawClientsData.find(c => c.id === clientId);
+    if (!client) return;
+
+    document.getElementById('cw-client-id').value = client.id;
+    document.getElementById('cw-modal-client-name').textContent = `- ${client.name} (${client.instanceName})`;
+
+    const cw = client.chatwoot || {};
+    document.getElementById('cw-enabled').checked = cw.enabled === true;
+    document.getElementById('cw-url').value = cw.url || '';
+    document.getElementById('cw-account-id').value = cw.accountId || '';
+    document.getElementById('cw-inbox-id').value = cw.inboxId || '';
+    document.getElementById('cw-token').value = cw.token || '';
+
+    const statusMsg = document.getElementById('cw-status-msg');
+    statusMsg.style.display = 'none';
+    statusMsg.textContent = '';
+
+    document.getElementById('chatwoot-modal').style.display = 'flex';
+  };
+
+  window.closeChatwootModal = function() {
+    document.getElementById('chatwoot-modal').style.display = 'none';
+  };
+
+  window.saveChatwootConfig = function() {
+    const clientId = document.getElementById('cw-client-id').value;
+    const enabled = document.getElementById('cw-enabled').checked;
+    const url = document.getElementById('cw-url').value;
+    const accountId = document.getElementById('cw-account-id').value;
+    const inboxId = document.getElementById('cw-inbox-id').value;
+    const token = document.getElementById('cw-token').value;
+
+    const statusMsg = document.getElementById('cw-status-msg');
+    statusMsg.style.display = 'block';
+    statusMsg.style.color = '#60a5fa';
+    statusMsg.textContent = '💾 Salvando e configurando webhooks...';
+
+    fetch(`/api/admin/clients/${clientId}/chatwoot`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled, url, accountId, inboxId, token })
+    })
+      .then(res => res.json())
+      .then(data => {
+        if (data.ok) {
+          statusMsg.style.color = '#34d399';
+          statusMsg.textContent = '✅ ' + (data.message || 'Configurações salvas!');
+          if (data.chatwoot?.inboxId) {
+            document.getElementById('cw-inbox-id').value = data.chatwoot.inboxId;
+          }
+          setTimeout(() => {
+            closeChatwootModal();
+            loadOverviewData();
+          }, 1200);
+        } else {
+          statusMsg.style.color = '#f87171';
+          statusMsg.textContent = '❌ ' + (data.error || 'Falha ao salvar configurações.');
+        }
+      })
+      .catch(err => {
+        statusMsg.style.color = '#f87171';
+        statusMsg.textContent = '❌ Erro de comunicação com o servidor: ' + err.message;
+      });
+  };
+
+  window.autoCreateInbox = function() {
+    const clientId = document.getElementById('cw-client-id').value;
+    const url = document.getElementById('cw-url').value;
+    const accountId = document.getElementById('cw-account-id').value;
+    const token = document.getElementById('cw-token').value;
+
+    if (!url || !accountId || !token) {
+      alert('Por favor, preencha a URL do Chatwoot, Account ID e Token do Usuário antes de criar a Inbox.');
+      return;
+    }
+
+    const statusMsg = document.getElementById('cw-status-msg');
+    statusMsg.style.display = 'block';
+    statusMsg.style.color = '#60a5fa';
+    statusMsg.textContent = '⚡ Criando Inbox API no Chatwoot automaticamente...';
+
+    fetch(`/api/admin/clients/${clientId}/chatwoot`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled: true, url, accountId, token, autoCreateInbox: true })
+    })
+      .then(res => res.json())
+      .then(data => {
+        if (data.ok) {
+          statusMsg.style.color = '#34d399';
+          statusMsg.textContent = '🎉 Inbox criada com sucesso no Chatwoot! ID: ' + (data.chatwoot?.inboxId || '');
+          if (data.chatwoot?.inboxId) {
+            document.getElementById('cw-inbox-id').value = data.chatwoot.inboxId;
+            document.getElementById('cw-enabled').checked = true;
+          }
+          loadOverviewData();
+        } else {
+          statusMsg.style.color = '#f87171';
+          statusMsg.textContent = '❌ ' + (data.error || 'Falha ao criar Inbox no Chatwoot.');
+        }
+      })
+      .catch(err => {
+        statusMsg.style.color = '#f87171';
+        statusMsg.textContent = '❌ Erro ao criar Inbox: ' + err.message;
+      });
   };
 
   function escapeHtml(text) {
