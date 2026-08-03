@@ -873,18 +873,18 @@ app.post('/api/webhook/evogo/:clientId', async (req, res) => {
     return;
   }
 
-  const data = payload.data || payload;
-  const key = data.key || data.Key || {};
+  const data = payload.data || payload.Data || payload;
+  const key = data.key || data.Key || (data.Info ? { remoteJid: data.Info.Chat, fromMe: data.Info.IsFromMe } : {});
   
-  if (key.fromMe || key.FromMe) return;
+  if (key.fromMe || key.FromMe || (data.Info && data.Info.IsFromMe)) return;
 
-  const senderJid = key.remoteJid || key.RemoteJid || data.from || data.From || '';
+  const senderJid = key.remoteJid || key.RemoteJid || (data.Info ? data.Info.Sender || data.Info.Chat : '') || data.from || data.From || '';
   if (!senderJid || senderJid.includes('@g.us')) return;
 
   const cleanPhone = senderJid.split('@')[0].split(':')[0].replace(/\D/g, '');
   if (!cleanPhone) return;
 
-  const pushName = data.pushName || data.PushName || cleanPhone;
+  const pushName = data.pushName || data.PushName || (data.Info ? data.Info.PushName : null) || cleanPhone;
   
   let text = data.message?.conversation || 
              data.message?.extendedTextMessage?.text || 
@@ -893,7 +893,7 @@ app.post('/api/webhook/evogo/:clientId', async (req, res) => {
              data.message?.documentMessage?.caption || 
              data.text || data.TextMessage?.text || '';
 
-  const mediaType = data.messageType || data.type;
+  const mediaType = data.messageType || data.type || (data.Info ? data.Info.Type : null);
   if (!text && mediaType) {
     text = `[${String(mediaType).toUpperCase()}]`;
   }
@@ -915,7 +915,7 @@ app.post('/api/webhook/evogo/:clientId', async (req, res) => {
         private: false
       })
     });
-    console.log(`[CHATWOOT BRIDGE] 📩 Mensagem de ${cleanPhone} entregue ao Chatwoot para a instância ${client.instanceName}`);
+    console.log(`[CHATWOOT BRIDGE] 📩 Mensagem de ${cleanPhone} (${pushName}) entregue ao Chatwoot para a instância ${client.instanceName}`);
   } catch (err) {
     console.error(`[CHATWOOT BRIDGE ERROR] Erro ao entregar mensagem ao Chatwoot:`, err.message);
   }
@@ -934,23 +934,30 @@ app.post('/api/webhook/chatwoot/:clientId', async (req, res) => {
   const payload = req.body || {};
   const event = payload.event;
 
+  console.log(`[CHATWOOT OUTBOUND WEBHOOK] Recebido para ${client.instanceName}: event=${event}, type=${payload.message_type}, private=${payload.private}`);
+
   if (event !== 'message_created' || payload.message_type !== 'outgoing' || payload.private) {
     return;
   }
 
   const text = payload.content || '';
   const conversation = payload.conversation || {};
-  const contact = payload.sender || payload.contact || conversation.contact || {};
-  const rawPhone = contact.phone_number || contact.identifier || '';
+  const customerContact = conversation.meta?.sender || conversation.contact || payload.contact || {};
+  const rawPhone = customerContact.phone_number || customerContact.identifier || conversation.contact_inbox?.source_id || '';
   const cleanPhone = rawPhone.replace(/\D/g, '');
 
-  if (!cleanPhone || !text) return;
+  if (!cleanPhone || !text) {
+    console.log(`[CHATWOOT OUTBOUND SKIPPED] Telefone: '${cleanPhone}', Texto: '${text}'`);
+    return;
+  }
+
+  if (cleanPhone === '5500000000000') return;
 
   const clientServer = db.servers.find(s => s.id === client.serverId);
   if (!clientServer) return;
 
   try {
-    console.log(`[CHATWOOT BRIDGE] 📤 Enviando resposta do atendente para ${cleanPhone} via Evolution Go (${client.instanceName})...`);
+    console.log(`[CHATWOOT BRIDGE] 📤 Enviando resposta do atendente para ${cleanPhone} via Evolution Go (${client.instanceName}): "${text}"`);
     await sendEVOMessage(clientServer, client.instanceName, cleanPhone, text);
   } catch (err) {
     console.error(`[CHATWOOT BRIDGE ERROR] Falha ao enviar resposta para Evolution Go:`, err.message);
@@ -1014,7 +1021,7 @@ app.post('/api/admin/clients/:id/chatwoot', async (req, res) => {
       const evoWebhookUrl = `${baseUrl}/api/webhook/evogo/${client.id}`;
       try {
         await pgPool.query(
-          `UPDATE instances SET webhook = $1, events = 'MESSAGE' WHERE name = $2 OR token = $3`,
+          `UPDATE instances SET webhook = $1, events = '["MESSAGE","MESSAGES_UPSERT"]' WHERE name = $2 OR token = $3`,
           [cwConfig.enabled ? evoWebhookUrl : '', client.instanceName, client.evoGoToken]
         );
         console.log(`[CHATWOOT] Postgres webhook configurado para ${client.instanceName} -> ${cwConfig.enabled ? evoWebhookUrl : 'VAZIO'}`);
