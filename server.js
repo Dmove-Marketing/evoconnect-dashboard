@@ -220,11 +220,11 @@ async function fetchServerInstances(server) {
 
     if (list) {
       return list
-        .filter(item => typeof item === 'object' && item && item.name)
+        .filter(item => typeof item === 'object' && item && (item.name || item.instanceName || item.instance?.instanceName))
         .map(item => ({
-          name: item.name || item.instanceName || 'Instância',
-          status: item.connected ? 'open' : 'close',
-          token: item.token || ''
+          name: item.name || item.instanceName || item.instance?.instanceName || 'Instância',
+          status: (item.connected || item.connectionStatus === 'open' || item.status === 'open' || item.state === 'open') ? 'open' : 'close',
+          token: item.token || item.instance?.token || ''
         }));
     }
   }
@@ -240,11 +240,11 @@ async function fetchServerInstances(server) {
 
     if (list) {
       return list
-        .filter(item => typeof item === 'object' && item && item.name)
+        .filter(item => typeof item === 'object' && item && (item.name || item.instanceName || item.instance?.instanceName))
         .map(item => ({
-          name: item.name || item.instanceName || 'Instância',
-          status: item.connected ? 'open' : 'close',
-          token: item.token || ''
+          name: item.name || item.instanceName || item.instance?.instanceName || 'Instância',
+          status: (item.connected || item.connectionStatus === 'open' || item.status === 'open' || item.state === 'open') ? 'open' : 'close',
+          token: item.token || item.instance?.token || ''
         }));
     }
   }
@@ -254,12 +254,18 @@ async function fetchServerInstances(server) {
     headers: { 'apikey': server.apiKey }
   });
 
-  if (res.ok && Array.isArray(res.data)) {
-    return res.data.map(item => ({
-      name: item.instance?.instanceName || item.name || item.instanceName || 'Instância',
-      status: item.instance?.status || item.instance?.state || item.status || (item.connected ? 'open' : 'close'),
-      token: item.token || item.instance?.token || ''
-    }));
+  if (res.ok) {
+    const list = Array.isArray(res.data)
+      ? res.data
+      : (Array.isArray(res.data?.data) ? res.data.data : (Array.isArray(res.data?.response) ? res.data.response : null));
+
+    if (list) {
+      return list.map(item => ({
+        name: item.instance?.instanceName || item.name || item.instanceName || 'Instância',
+        status: (item.instance?.connectionStatus === 'open' || item.instance?.status === 'open' || item.instance?.state === 'open' || item.connectionStatus === 'open' || item.status === 'open' || item.state === 'open' || item.connected) ? 'open' : 'close',
+        token: item.token || item.instance?.token || ''
+      }));
+    }
   }
 
   return [];
@@ -290,7 +296,7 @@ async function getEVOStatus(server, instanceName, clientEvoToken = '', skipDeepC
   });
 
   if (res.ok) {
-    const stateData = res.data?.instance?.state || res.data?.instance?.status || res.data?.state || res.data?.status;
+    const stateData = res.data?.instance?.connectionStatus || res.data?.instance?.state || res.data?.instance?.status || res.data?.connectionStatus || res.data?.state || res.data?.status;
     if (stateData === 'open' || stateData === 'connected') {
       if (!skipDeepCheck) {
         const isSocketAlive = await checkDeepSocketHealth(server, instanceName, clientEvoToken);
