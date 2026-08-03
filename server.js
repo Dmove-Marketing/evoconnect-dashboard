@@ -551,6 +551,33 @@ async function syncAllInstances() {
     }
   }
 
+async function ensureChatwootWebhook(cwConfig, clientId) {
+  if (!cwConfig || !cwConfig.enabled || !cwConfig.url || !cwConfig.token || !cwConfig.accountId) return;
+  const baseUrl = process.env.BASE_URL || 'https://painel.dmove.com.br';
+  const targetUrl = `${baseUrl}/api/webhook/chatwoot/${clientId}`;
+  try {
+    const listRes = await chatwootFetch(cwConfig.url, cwConfig.token, `/api/v1/accounts/${cwConfig.accountId}/webhooks`);
+    if (listRes.ok) {
+      const existingWebhooks = listRes.data?.payload?.webhooks || listRes.data?.webhooks || [];
+      const exists = existingWebhooks.some(w => w.url === targetUrl);
+      if (!exists) {
+        const createRes = await chatwootFetch(cwConfig.url, cwConfig.token, `/api/v1/accounts/${cwConfig.accountId}/webhooks`, {
+          method: 'POST',
+          body: JSON.stringify({
+            url: targetUrl,
+            subscriptions: ['message_created', 'message_updated']
+          })
+        });
+        if (createRes.ok) {
+          console.log(`[CHATWOOT AUTO WEBHOOK] ✅ Webhook registrado no Chatwoot para cliente ${clientId}: ${targetUrl}`);
+        }
+      }
+    }
+  } catch (err) {
+    console.error(`[CHATWOOT AUTO WEBHOOK ERROR] Exceção ao verificar webhook no Chatwoot:`, err.message);
+  }
+}
+
 async function syncChatwootWebhooksToPostgres() {
   const db = loadDB();
   const baseUrl = process.env.BASE_URL || 'https://painel.dmove.com.br';
@@ -562,6 +589,7 @@ async function syncChatwootWebhooksToPostgres() {
           `UPDATE instances SET webhook = $1, events = '["MESSAGE","MESSAGES_UPSERT"]' WHERE name = $2 OR token = $3`,
           [evoWebhookUrl, client.instanceName, client.evoGoToken]
         );
+        await ensureChatwootWebhook(client.chatwoot, client.id);
       } catch (err) {}
     }
   }
@@ -894,7 +922,8 @@ app.post('/api/webhook/evogo/:clientId', async (req, res) => {
   const data = payload.data || payload.Data || payload;
   const key = data.key || data.Key || (data.Info ? { remoteJid: data.Info.Chat, fromMe: data.Info.IsFromMe } : {});
   
-  if (key.fromMe || key.FromMe || (data.Info && data.Info.IsFromMe)) return;
+  const isFromMe = Boolean(key.fromMe || key.FromMe || (data.Info && data.Info.IsFromMe));
+  const messageTypeInChatwoot = isFromMe ? 'outgoing' : 'incoming';
 
   const senderJid = key.remoteJid || key.RemoteJid || (data.Info ? data.Info.Sender || data.Info.Chat : '') || data.from || data.From || '';
   if (!senderJid || senderJid.includes('@g.us')) return;
@@ -923,7 +952,6 @@ app.post('/api/webhook/evogo/:clientId', async (req, res) => {
   const mediaType = data.messageType || data.MessageType || data.type || (data.Info ? data.Info.Type : null);
   
   if (!text) {
-    console.log(`[EVOGO INBOUND PAYLOAD DEBUG] Instância: ${client.instanceName}, De: ${cleanPhone}, Payload:`, JSON.stringify(data).substring(0, 500));
     if (mediaType && !['text', 'extendedtextmessage', 'message'].includes(String(mediaType).toLowerCase())) {
       text = `[${String(mediaType).toUpperCase()}]`;
     } else {
@@ -942,11 +970,11 @@ app.post('/api/webhook/evogo/:clientId', async (req, res) => {
       method: 'POST',
       body: JSON.stringify({
         content: text,
-        message_type: 'incoming',
+        message_type: messageTypeInChatwoot,
         private: false
       })
     });
-    console.log(`[CHATWOOT BRIDGE] 📩 Mensagem de ${cleanPhone} (${pushName}) entregue ao Chatwoot para a instância ${client.instanceName}`);
+    console.log(`[CHATWOOT BRIDGE] 📩 Mensagem (${messageTypeInChatwoot}) de/para ${cleanPhone} (${pushName}) entregue ao Chatwoot para a instância ${client.instanceName}`);
   } catch (err) {
     console.error(`[CHATWOOT BRIDGE ERROR] Erro ao entregar mensagem ao Chatwoot:`, err.message);
   }
@@ -968,6 +996,11 @@ app.post('/api/webhook/chatwoot/:clientId', async (req, res) => {
   console.log(`[CHATWOOT OUTBOUND WEBHOOK] Recebido para ${client.instanceName}: event=${event}, type=${payload.message_type}, private=${payload.private}`);
 
   if (event !== 'message_created' || payload.message_type !== 'outgoing' || payload.private) {
+    return;
+  }
+
+  // Ignorar se a mensagem foi gerada por um bot/sistema interno
+  if (payload.sender?.type === 'agent_bot' || payload.sender?.name === 'Status Conexão') {
     return;
   }
 
@@ -1055,6 +1088,7 @@ app.post('/api/admin/clients/:id/chatwoot', async (req, res) => {
           `UPDATE instances SET webhook = $1, events = '["MESSAGE","MESSAGES_UPSERT"]' WHERE name = $2 OR token = $3`,
           [cwConfig.enabled ? evoWebhookUrl : '', client.instanceName, client.evoGoToken]
         );
+        await ensureChatwootWebhook(cwConfig, client.id);
         console.log(`[CHATWOOT] Postgres webhook configurado para ${client.instanceName} -> ${cwConfig.enabled ? evoWebhookUrl : 'VAZIO'}`);
       } catch (err) {
         console.error('[CHATWOOT] Falha ao atualizar webhook no Postgres:', err.message);
