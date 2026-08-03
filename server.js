@@ -17,6 +17,16 @@ const PORT = process.env.PORT || 3000;
 
 app.use(cors());
 app.use(express.json());
+
+// Rotas amigáveis sem .html para o Admin
+app.get('/admin', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'admin.html'));
+});
+
+app.get('/admin.html', (req, res) => {
+  res.redirect(301, '/admin');
+});
+
 app.use(express.static(path.join(__dirname, 'public')));
 
 // Path do Banco de Dados JSON
