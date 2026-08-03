@@ -537,6 +537,18 @@ footer {
   margin-top: 0.5rem;
 }
 
+.responsive-form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+.responsive-btn-group {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
 /* Media Queries for Mobile Responsiveness */
 @media (max-width: 992px) {
   .responsive-grid-2col,
@@ -582,8 +594,10 @@ footer {
   }
 
   .filter-bar-overview,
-  .filter-bar-clients {
+  .filter-bar-clients,
+  .responsive-form-row {
     grid-template-columns: 1fr;
+    gap: 0.75rem;
   }
 
   .stats-grid {
@@ -601,13 +615,24 @@ footer {
   }
 
   .admin-tabs {
-    gap: 0.35rem;
+    display: flex;
+    gap: 0.4rem;
     margin-bottom: 1.25rem;
+    overflow-x: auto;
+    white-space: nowrap;
+    padding-bottom: 0.5rem;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+
+  .admin-tabs::-webkit-scrollbar {
+    display: none;
   }
 
   .tab-btn {
     padding: 0.55rem 0.85rem;
     font-size: 0.82rem;
+    flex-shrink: 0;
   }
 
   .data-table th, .data-table td {
@@ -618,6 +643,10 @@ footer {
   .data-table .btn {
     padding: 0.35rem 0.6rem !important;
     font-size: 0.75rem !important;
+  }
+
+  .responsive-btn-group > * {
+    flex: 1 1 100%;
   }
 
   .modal-content {

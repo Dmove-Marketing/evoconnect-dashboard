@@ -313,8 +313,8 @@
 
             <div style="border-top: 1px solid var(--border-color); padding-top: 1.25rem; margin-top: 1.25rem;">
               <h4 style="font-size: 0.95rem; margin-bottom: 0.75rem;">🧪 Testar Envio de Alerta</h4>
-              <div style="display: flex; gap: 0.75rem;">
-                <input type="text" id="test-phone-input" class="form-control" placeholder="Seu WhatsApp (ex: 5511999998888)">
+              <div class="responsive-btn-group">
+                <input type="text" id="test-phone-input" class="form-control" placeholder="Seu WhatsApp (ex: 5511999998888)" style="flex: 1;">
                 <button id="btn-test-alert" class="btn btn-secondary" style="white-space: nowrap;">
                   Enviar Teste
                 </button>
@@ -345,7 +345,7 @@
                 <input type="text" id="email-smtp-host" class="form-control" placeholder="smtp.gmail.com ou mail.seudominio.com.br">
               </div>
 
-              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+              <div class="responsive-form-row">
                 <div class="form-group">
                   <label for="email-smtp-port">Porta SMTP</label>
                   <input type="number" id="email-smtp-port" class="form-control" placeholder="587">
@@ -398,7 +398,7 @@
                 </div>
               </div>
 
-              <div style="display: flex; gap: 1rem;">
+              <div class="responsive-btn-group">
                 <button id="btn-save-email-settings" class="btn btn-primary" style="flex: 1;">
                   💾 Salvar Configurações de E-mail
                 </button>
@@ -509,7 +509,7 @@
         <input type="text" id="cw-url" class="form-control" placeholder="https://chatwoot.dmove.com.br" style="font-size: 0.85rem;">
       </div>
 
-      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">
+      <div class="responsive-form-row" style="margin-bottom: 1rem;">
         <div class="form-group">
           <label for="cw-account-id" style="font-size: 0.85rem;">Account ID (ID da Conta)</label>
           <input type="text" id="cw-account-id" class="form-control" placeholder="Ex: 1" style="font-size: 0.85rem;">
