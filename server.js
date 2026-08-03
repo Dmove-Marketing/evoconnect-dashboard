@@ -586,7 +586,7 @@ async function syncChatwootWebhooksToPostgres() {
       const evoWebhookUrl = `${baseUrl}/api/webhook/evogo/${client.id}`;
       try {
         await pgPool.query(
-          `UPDATE instances SET webhook = $1, events = '["MESSAGE","MESSAGES_UPSERT"]' WHERE name = $2 OR token = $3`,
+          `UPDATE instances SET webhook = $1, events = 'MESSAGE' WHERE name = $2 OR token = $3`,
           [evoWebhookUrl, client.instanceName, client.evoGoToken]
         );
         await ensureChatwootWebhook(client.chatwoot, client.id);
@@ -1085,7 +1085,7 @@ app.post('/api/admin/clients/:id/chatwoot', async (req, res) => {
       const evoWebhookUrl = `${baseUrl}/api/webhook/evogo/${client.id}`;
       try {
         await pgPool.query(
-          `UPDATE instances SET webhook = $1, events = '["MESSAGE","MESSAGES_UPSERT"]' WHERE name = $2 OR token = $3`,
+          `UPDATE instances SET webhook = $1, events = 'MESSAGE' WHERE name = $2 OR token = $3`,
           [cwConfig.enabled ? evoWebhookUrl : '', client.instanceName, client.evoGoToken]
         );
         await ensureChatwootWebhook(cwConfig, client.id);
