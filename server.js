@@ -904,19 +904,32 @@ app.post('/api/webhook/evogo/:clientId', async (req, res) => {
 
   const pushName = data.pushName || data.PushName || (data.Info ? data.Info.PushName : null) || cleanPhone;
   
-  let text = data.message?.conversation || 
-             data.message?.extendedTextMessage?.text || 
-             data.message?.imageMessage?.caption || 
-             data.message?.videoMessage?.caption || 
-             data.message?.documentMessage?.caption || 
-             data.text || data.TextMessage?.text || '';
+  const msgObj = data.message || data.Message || data.payload?.message || data.payload?.Message || data;
+  
+  let text = msgObj.conversation || msgObj.Conversation ||
+             msgObj.extendedTextMessage?.text || msgObj.ExtendedTextMessage?.Text || msgObj.extendedTextMessage?.Text ||
+             msgObj.imageMessage?.caption || msgObj.ImageMessage?.Caption ||
+             msgObj.videoMessage?.caption || msgObj.VideoMessage?.Caption ||
+             msgObj.documentMessage?.caption || msgObj.DocumentMessage?.Caption ||
+             msgObj.audioMessage?.caption || msgObj.AudioMessage?.Caption ||
+             msgObj.text || msgObj.Text || msgObj.content || msgObj.body ||
+             data.conversation || data.Conversation ||
+             data.text || data.Text || data.body || data.content || '';
 
-  const mediaType = data.messageType || data.type || (data.Info ? data.Info.Type : null);
-  if (!text && mediaType) {
-    text = `[${String(mediaType).toUpperCase()}]`;
+  if (typeof text !== 'string') {
+    text = String(text || '');
   }
 
-  if (!text) text = '[Mensagem do WhatsApp]';
+  const mediaType = data.messageType || data.MessageType || data.type || (data.Info ? data.Info.Type : null);
+  
+  if (!text) {
+    console.log(`[EVOGO INBOUND PAYLOAD DEBUG] Instância: ${client.instanceName}, De: ${cleanPhone}, Payload:`, JSON.stringify(data).substring(0, 500));
+    if (mediaType && !['text', 'extendedtextmessage', 'message'].includes(String(mediaType).toLowerCase())) {
+      text = `[${String(mediaType).toUpperCase()}]`;
+    } else {
+      text = '[Mensagem do WhatsApp]';
+    }
+  }
 
   try {
     const contact = await getOrCreateChatwootContact(client.chatwoot, cleanPhone, pushName);
