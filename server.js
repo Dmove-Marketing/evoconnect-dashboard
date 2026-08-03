@@ -747,13 +747,21 @@ async function getOrCreateChatwootContact(cwConfig, phone, name) {
   const searchRes = await chatwootFetch(cwConfig.url, cwConfig.token, `/api/v1/accounts/${cwConfig.accountId}/contacts/search?q=${encodeURIComponent(cleanPhone)}`);
   
   if (searchRes.ok && searchRes.data?.payload?.length > 0) {
-    return searchRes.data.payload[0];
+    const contact = searchRes.data.payload[0];
+    if (name && contact.name !== name) {
+      await chatwootFetch(cwConfig.url, cwConfig.token, `/api/v1/accounts/${cwConfig.accountId}/contacts/${contact.id}`, {
+        method: 'PUT',
+        body: JSON.stringify({ name: name })
+      }).catch(() => {});
+      contact.name = name;
+    }
+    return contact;
   }
 
   const createRes = await chatwootFetch(cwConfig.url, cwConfig.token, `/api/v1/accounts/${cwConfig.accountId}/contacts`, {
     method: 'POST',
     body: JSON.stringify({
-      name: name || cleanPhone,
+      name: name || 'Status Conexão',
       phone_number: cleanPhone
     })
   });
@@ -817,7 +825,7 @@ async function sendChatwootNotification(client, messageText) {
   }
   const cw = client.chatwoot;
   try {
-    const botContact = await getOrCreateChatwootContact(cw, '5500000000000', `🤖 EvoConnect Bot (${client.instanceName})`);
+    const botContact = await getOrCreateChatwootContact(cw, '5500000000000', 'Status Conexão');
     if (!botContact) return false;
 
     const conv = await getOrCreateChatwootConversation(cw, botContact.id, cw.inboxId);
