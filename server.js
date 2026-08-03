@@ -273,31 +273,25 @@ async function getEVOStatus(server, instanceName, clientEvoToken = '', skipDeepC
 
   const cleanUrl = server.url.replace(/\/$/, '');
 
-  // Suporte a Evolution Go: tenta buscar status via /instance/status com o token da instância ou apiKey
-  const activeKey = clientEvoToken || server.apiKey;
-  let res = await evoFetch(`${cleanUrl}/instance/status`, {
-    headers: { 'apikey': activeKey }
-  });
-
-  if (res.ok && res.data?.data) {
-    // No Evolution Go: LoggedIn === true indica se o WhatsApp está realmente autenticado e conectado
-    const isConnected = res.data.data.LoggedIn === true;
+  // 1. Consultar a lista geral de instâncias do servidor (funciona para Evolution Go e v1/v2)
+  const allInstances = await fetchServerInstances(server);
+  const found = allInstances.find(i => String(i.name).toLowerCase() === String(instanceName).toLowerCase());
+  if (found) {
     return {
-      status: isConnected ? 'CONNECTED' : 'DISCONNECTED',
-      phone: res.data.data.Jid || '',
-      profileName: res.data.data.Name || ''
+      status: found.status === 'open' ? 'CONNECTED' : 'DISCONNECTED',
+      phone: found.phone || '',
+      profileName: found.name || ''
     };
   }
 
-  // Tenta endpoint padrão v1/v2 (/instance/connectionState/:name)
-  res = await evoFetch(`${cleanUrl}/instance/connectionState/${instanceName}`, {
+  // 2. Tenta endpoint padrão v1/v2 (/instance/connectionState/:name)
+  let res = await evoFetch(`${cleanUrl}/instance/connectionState/${instanceName}`, {
     headers: { 'apikey': server.apiKey }
   });
 
   if (res.ok) {
     const stateData = res.data?.instance?.state || res.data?.instance?.status || res.data?.state || res.data?.status;
     if (stateData === 'open' || stateData === 'connected') {
-      // Deep Health Check para identificar socket travado (apenas v1/v2 Node)
       if (!skipDeepCheck) {
         const isSocketAlive = await checkDeepSocketHealth(server, instanceName, clientEvoToken);
         if (!isSocketAlive) {
@@ -318,13 +312,6 @@ async function getEVOStatus(server, instanceName, clientEvoToken = '', skipDeepC
     } else {
       return { status: 'DISCONNECTED' };
     }
-  }
-
-  // Fallback para Evolution Go: busca a lista geral /instance/all
-  const allInstances = await fetchServerInstances(server);
-  const found = allInstances.find(i => String(i.name).toLowerCase() === String(instanceName).toLowerCase());
-  if (found) {
-    return { status: found.status === 'open' ? 'CONNECTED' : 'DISCONNECTED' };
   }
 
   return { status: 'DISCONNECTED' };
