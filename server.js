@@ -551,10 +551,28 @@ async function syncAllInstances() {
     }
   }
 
+async function syncChatwootWebhooksToPostgres() {
+  const db = loadDB();
+  const baseUrl = process.env.BASE_URL || 'https://painel.dmove.com.br';
+  for (const client of db.clients) {
+    if (client.chatwoot && client.chatwoot.enabled) {
+      const evoWebhookUrl = `${baseUrl}/api/webhook/evogo/${client.id}`;
+      try {
+        await pgPool.query(
+          `UPDATE instances SET webhook = $1, events = '["MESSAGE","MESSAGES_UPSERT"]' WHERE name = $2 OR token = $3`,
+          [evoWebhookUrl, client.instanceName, client.evoGoToken]
+        );
+      } catch (err) {}
+    }
+  }
+}
+
   if (addedCount > 0) {
     saveDB(db);
     console.log(`[SINCRONIA EVO] ${addedCount} novas instâncias descobertas e integradas ao painel!`);
   }
+
+  await syncChatwootWebhooksToPostgres().catch(() => {});
 
   return { addedCount, totalClients: db.clients.length };
 }
