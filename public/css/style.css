@@ -494,3 +494,159 @@ footer {
   border-top: 1px solid var(--border-color);
   margin-top: auto;
 }
+
+/* Responsive Grid Classes */
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1.25rem;
+  margin-bottom: 2rem;
+}
+
+.responsive-grid-2col {
+  display: grid;
+  grid-template-columns: 360px 1fr;
+  gap: 2rem;
+}
+
+.responsive-grid-equal {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2rem;
+}
+
+.filter-bar-overview {
+  display: grid;
+  grid-template-columns: 1fr minmax(180px, 240px) minmax(160px, 200px);
+  gap: 0.75rem;
+  margin-bottom: 1.25rem;
+}
+
+.filter-bar-clients {
+  display: grid;
+  grid-template-columns: 1fr minmax(180px, 220px);
+  gap: 0.75rem;
+  margin-bottom: 1.25rem;
+}
+
+.table-responsive {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border-radius: 12px;
+  margin-top: 0.5rem;
+}
+
+/* Media Queries for Mobile Responsiveness */
+@media (max-width: 992px) {
+  .responsive-grid-2col,
+  .responsive-grid-equal {
+    grid-template-columns: 1fr;
+    gap: 1.5rem;
+  }
+}
+
+@media (max-width: 768px) {
+  .navbar {
+    padding: 0.75rem 1rem;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.75rem;
+  }
+
+  .navbar-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    justify-content: space-between;
+    width: 100%;
+  }
+
+  .navbar-actions > * {
+    flex: 1;
+    min-width: 100px;
+    font-size: 0.75rem !important;
+    padding: 0.45rem 0.6rem !important;
+    text-align: center;
+    justify-content: center;
+  }
+
+  .container {
+    margin: 1rem auto;
+    padding: 0 0.75rem;
+  }
+
+  .glass-card {
+    padding: 1.25rem 1rem;
+    border-radius: 14px;
+  }
+
+  .filter-bar-overview,
+  .filter-bar-clients {
+    grid-template-columns: 1fr;
+  }
+
+  .stats-grid {
+    grid-template-columns: 1fr 1fr;
+    gap: 0.75rem;
+    margin-bottom: 1.25rem;
+  }
+
+  .stats-grid .glass-card {
+    padding: 1rem;
+  }
+
+  .stats-grid .glass-card div:last-child {
+    font-size: 1.75rem !important;
+  }
+
+  .admin-tabs {
+    gap: 0.35rem;
+    margin-bottom: 1.25rem;
+  }
+
+  .tab-btn {
+    padding: 0.55rem 0.85rem;
+    font-size: 0.82rem;
+  }
+
+  .data-table th, .data-table td {
+    padding: 0.6rem 0.5rem;
+    font-size: 0.82rem;
+  }
+
+  .data-table .btn {
+    padding: 0.35rem 0.6rem !important;
+    font-size: 0.75rem !important;
+  }
+
+  .modal-content {
+    width: 95%;
+    padding: 1.25rem 1rem;
+    max-height: 90vh;
+    overflow-y: auto;
+  }
+}
+
+@media (max-width: 480px) {
+  .brand {
+    font-size: 1.1rem;
+  }
+
+  .stats-grid {
+    grid-template-columns: 1fr 1fr;
+    gap: 0.5rem;
+  }
+  
+  .stats-grid .glass-card {
+    padding: 0.85rem 0.75rem;
+  }
+  
+  .stats-grid .glass-card div:first-child {
+    font-size: 0.7rem !important;
+  }
+  
+  .stats-grid .glass-card div:last-child {
+    font-size: 1.5rem !important;
+  }
+}

@@ -15,7 +15,7 @@
       <div class="brand-icon">⚙️</div>
       <span>EvoConnect <small style="font-size: 0.75rem; color: var(--primary-color); background: rgba(5,150,105,0.2); padding: 2px 8px; border-radius: 20px;">ADMIN</small></span>
     </a>
-    <div style="display: flex; gap: 1rem; align-items: center;">
+    <div class="navbar-actions">
       <button id="btn-sync-all" class="btn btn-secondary" style="font-size: 0.85rem; padding: 0.5rem 1rem;">
         🔄 Sincronizar Instâncias da EVO
       </button>
@@ -66,7 +66,7 @@
       <div id="tab-overview" class="tab-content">
         
         <!-- Cards de Estatísticas -->
-        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1.25rem; margin-bottom: 2rem;">
+        <div class="stats-grid">
           <div class="glass-card" style="padding: 1.5rem;">
             <div style="font-size: 0.85rem; color: var(--text-muted);">TOTAL DE CLIENTES</div>
             <div id="stat-total-clients" style="font-family: var(--font-heading); font-size: 2.2rem; font-weight: 800; margin-top: 0.4rem;">0</div>
@@ -95,7 +95,7 @@
           </div>
           
           <!-- Filtros da Visão Geral -->
-          <div style="display: grid; grid-template-columns: 1fr minmax(180px, 240px) minmax(160px, 200px); gap: 0.75rem; margin-bottom: 1.25rem;">
+          <div class="filter-bar-overview">
             <input type="text" id="overview-search-input" class="form-control" placeholder="🔍 Buscar por nome do cliente ou instância..." style="font-size: 0.85rem;">
             <select id="overview-server-filter" class="form-control" style="font-size: 0.85rem;">
               <option value="">Todas as APIs / Servidores</option>
@@ -108,21 +108,23 @@
             </select>
           </div>
 
-          <table class="data-table">
-            <thead>
-              <tr>
-                <th>Cliente</th>
-                <th>Instância</th>
-                <th>Servidor EVO</th>
-                <th>Status</th>
-                <th>Link de Reconexão do Cliente</th>
-                <th>Ações</th>
-              </tr>
-            </thead>
-            <tbody id="overview-clients-tbody">
-              <tr><td colspan="5" style="text-align: center; color: var(--text-muted);">Carregando dados...</td></tr>
-            </tbody>
-          </table>
+          <div class="table-responsive">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Cliente</th>
+                  <th>Instância</th>
+                  <th>Servidor EVO</th>
+                  <th>Status</th>
+                  <th>Link de Reconexão do Cliente</th>
+                  <th>Ações</th>
+                </tr>
+              </thead>
+              <tbody id="overview-clients-tbody">
+                <tr><td colspan="6" style="text-align: center; color: var(--text-muted);">Carregando dados...</td></tr>
+              </tbody>
+            </table>
+          </div>
         </div>
 
       </div>
@@ -130,7 +132,7 @@
       <!-- ABA 2: CLIENTES & INSTÂNCIAS -->
       <div id="tab-clients" class="tab-content" style="display: none;">
         
-        <div style="display: grid; grid-template-columns: 350px 1fr; gap: 2rem;">
+        <div class="responsive-grid-2col">
           
           <!-- Formulário Criar Cliente -->
           <div class="glass-card">
@@ -173,27 +175,29 @@
             <h3 style="font-family: var(--font-heading); margin-bottom: 1.25rem;">Clientes & Instâncias Cadastradas</h3>
             
             <!-- Filtros da Tabela de Clientes -->
-            <div style="display: grid; grid-template-columns: 1fr minmax(180px, 220px); gap: 0.75rem; margin-bottom: 1.25rem;">
+            <div class="filter-bar-clients">
               <input type="text" id="clients-search-input" class="form-control" placeholder="🔍 Buscar por nome do cliente ou instância..." style="font-size: 0.85rem;">
               <select id="clients-server-filter" class="form-control" style="font-size: 0.85rem;">
                 <option value="">Todas as APIs / Servidores</option>
               </select>
             </div>
 
-            <table class="data-table">
-              <thead>
-                <tr>
-                  <th>Cliente</th>
-                  <th>Telefone Alerta</th>
-                  <th>Instância</th>
-                  <th>Origem</th>
-                  <th>Ações</th>
-                </tr>
-              </thead>
-              <tbody id="clients-tbody">
-                <tr><td colspan="5" style="text-align: center; color: var(--text-muted);">Nenhum cliente cadastrado.</td></tr>
-              </tbody>
-            </table>
+            <div class="table-responsive">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Cliente</th>
+                    <th>Telefone Alerta</th>
+                    <th>Instância</th>
+                    <th>Origem</th>
+                    <th>Ações</th>
+                  </tr>
+                </thead>
+                <tbody id="clients-tbody">
+                  <tr><td colspan="5" style="text-align: center; color: var(--text-muted);">Nenhum cliente cadastrado.</td></tr>
+                </tbody>
+              </table>
+            </div>
           </div>
 
         </div>
@@ -203,7 +207,7 @@
       <!-- ABA 3: SERVIDORES EVO (Multi-Versão) -->
       <div id="tab-servers" class="tab-content" style="display: none;">
         
-        <div style="display: grid; grid-template-columns: 380px 1fr; gap: 2rem;">
+        <div class="responsive-grid-2col">
           
           <!-- Formulário Criar Servidor EVO -->
           <div class="glass-card">
@@ -241,19 +245,21 @@
           <div class="glass-card">
             <h3 style="font-family: var(--font-heading); margin-bottom: 1.25rem;">Servidores Evolution API</h3>
             
-            <table class="data-table">
-              <thead>
-                <tr>
-                  <th>Nome</th>
-                  <th>URL</th>
-                  <th>Versão</th>
-                  <th>Ações</th>
-                </tr>
-              </thead>
-              <tbody id="servers-tbody">
-                <tr><td colspan="4" style="text-align: center; color: var(--text-muted);">Nenhum servidor cadastrado.</td></tr>
-              </tbody>
-            </table>
+            <div class="table-responsive">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Nome</th>
+                    <th>URL</th>
+                    <th>Versão</th>
+                    <th>Ações</th>
+                  </tr>
+                </thead>
+                <tbody id="servers-tbody">
+                  <tr><td colspan="4" style="text-align: center; color: var(--text-muted);">Nenhum servidor cadastrado.</td></tr>
+                </tbody>
+              </table>
+            </div>
           </div>
 
         </div>
@@ -263,7 +269,7 @@
       <!-- ABA 4: INSTÂNCIA MASTER & ALERTAS AUTOMÁTICOS -->
       <div id="tab-alerts" class="tab-content" style="display: none;">
         
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2rem;">
+        <div class="responsive-grid-equal">
           
           <!-- Configuração da Instância Master -->
           <div class="glass-card">
@@ -325,7 +331,7 @@
             Receba avisos instantâneos na sua caixa de e-mail sempre que a conexão de um WhatsApp for perdida (🔴 Desconectado) ou restabelecida (🟢 Conectado).
           </p>
 
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem;">
+          <div class="responsive-grid-equal">
             
             <!-- Coluna 1: Servidor SMTP -->
             <div>
@@ -410,7 +416,7 @@
       <!-- ABA 5: PERSONALIZAÇÃO (WHITE-LABEL) & API N8N -->
       <div id="tab-settings" class="tab-content" style="display: none;">
         
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2rem;">
+        <div class="responsive-grid-equal">
           
           <div class="glass-card">
             <h3 style="font-family: var(--font-heading); margin-bottom: 1.5rem;">Personalização da Marca (White-Label)</h3>

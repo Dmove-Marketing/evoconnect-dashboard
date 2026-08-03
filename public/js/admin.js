@@ -243,15 +243,15 @@ document.addEventListener('DOMContentLoaded', () => {
           <td>${escapeHtml(c.serverName)}</td>
           <td>${statusBadge}</td>
           <td>
-            <div style="display: flex; gap: 0.5rem; align-items: center;">
-              <input type="text" class="form-control" value="${link}" readonly style="font-size: 0.8rem; padding: 4px 8px; width: 200px;">
-              <button class="btn btn-secondary" onclick="copyLink('${link}')" style="padding: 4px 8px; font-size: 0.8rem;">
+            <div style="display: flex; gap: 0.4rem; align-items: center; min-width: 180px;">
+              <input type="text" class="form-control" value="${link}" readonly style="font-size: 0.8rem; padding: 4px 8px; flex: 1; min-width: 100px;">
+              <button class="btn btn-secondary" onclick="copyLink('${link}')" style="padding: 4px 8px; font-size: 0.8rem; white-space: nowrap;">
                 📋 Copiar
               </button>
             </div>
           </td>
           <td>
-            <div style="display: flex; gap: 0.4rem;">
+            <div style="display: flex; gap: 0.4rem; flex-wrap: wrap; min-width: 160px;">
               <button class="btn btn-secondary" onclick="openChatwootModal('${c.id}')" style="padding: 4px 8px; font-size: 0.78rem; background: rgba(59,130,246,0.15); border: 1px solid #3b82f6; color: #60a5fa;" title="Configurar Integração Chatwoot">
                 💬 Chatwoot
               </button>
