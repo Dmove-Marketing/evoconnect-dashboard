@@ -668,9 +668,14 @@ setInterval(async () => {
         }
       }
 
-      // 3. ALERTA DE RECONEXÃO POR E-MAIL (🟢)
+      // 3. ALERTA DE RECONEXÃO POR E-MAIL (🟢) E CHATWOOT (💬)
       if ((previousStatus === 'close' || previousStatus === 'ghost') && newStatus === 'open') {
         console.log(`[ALERTAS] Instância ${client.instanceName} (${client.name}) RECONECTADA!`);
+
+        if (client.chatwoot && client.chatwoot.enabled) {
+          const timeStr = new Date().toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+          sendChatwootNotification(client, `🟢 *EvoConnect Alerta*: A instância WhatsApp *${client.instanceName}* foi reconectada com sucesso às ${timeStr}!`).catch(() => {});
+        }
 
         if (emailCfg.enabled && emailCfg.notifyOnConnect !== false && emailCfg.recipientEmails) {
           const subject = `🟢 [EVOCONNECT] Conexão Restabelecida - ${client.name} (${client.instanceName})`;
@@ -803,6 +808,38 @@ async function autoCreateChatwootInbox(cwConfig, inboxName, webhookCallbackUrl) 
     return { ok: true, inbox: res.data };
   }
   return { ok: false, error: res.data?.message || res.error || 'Falha ao criar Inbox no Chatwoot' };
+}
+
+// 4. Enviar Notificação/Alerta diretamente no Chatwoot
+async function sendChatwootNotification(client, messageText) {
+  if (!client || !client.chatwoot || !client.chatwoot.enabled || !client.chatwoot.url || !client.chatwoot.token || !client.chatwoot.accountId || !client.chatwoot.inboxId) {
+    return false;
+  }
+  const cw = client.chatwoot;
+  try {
+    const botContact = await getOrCreateChatwootContact(cw, '5500000000000', `🤖 EvoConnect Bot (${client.instanceName})`);
+    if (!botContact) return false;
+
+    const conv = await getOrCreateChatwootConversation(cw, botContact.id, cw.inboxId);
+    if (!conv) return false;
+
+    const msgRes = await chatwootFetch(cw.url, cw.token, `/api/v1/accounts/${cw.accountId}/conversations/${conv.id}/messages`, {
+      method: 'POST',
+      body: JSON.stringify({
+        content: messageText,
+        message_type: 'incoming',
+        private: false
+      })
+    });
+    if (msgRes.ok) {
+      console.log(`[CHATWOOT NOTIFICATION] 📩 Notificação entregue no Chatwoot para ${client.instanceName}: ${messageText}`);
+      return true;
+    }
+    return false;
+  } catch (err) {
+    console.error(`[CHATWOOT NOTIFICATION ERROR] ${client.instanceName}:`, err.message);
+    return false;
+  }
 }
 
 // ----------------------------------------------------
@@ -982,7 +1019,29 @@ app.post('/api/admin/clients/:id/chatwoot', async (req, res) => {
   client.chatwoot = cwConfig;
   saveDB(db);
 
+  if (cwConfig.enabled) {
+    sendChatwootNotification(client, `🤖 *EvoConnect*: Integração com o Chatwoot configurada e ativada com sucesso para a instância *${client.instanceName}*!`).catch(() => {});
+  }
+
   res.json({ ok: true, message: 'Configurações do Chatwoot salvas com sucesso!', chatwoot: client.chatwoot });
+});
+
+// Testar Envio de Notificação no Chatwoot
+app.post('/api/admin/clients/:id/chatwoot/test', async (req, res) => {
+  const db = loadDB();
+  const client = db.clients.find(c => c.id === req.params.id);
+  if (!client || !client.chatwoot || !client.chatwoot.enabled) {
+    return res.status(400).json({ error: 'Integração Chatwoot não configurada ou desativada para este cliente.' });
+  }
+
+  const timeStr = new Date().toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+  const ok = await sendChatwootNotification(client, `🧪 *EvoConnect Teste*: Notificação de verificação enviada às ${timeStr} para a instância *${client.instanceName}*!`);
+
+  if (ok) {
+    res.json({ ok: true, message: 'Mensagem de teste enviada com sucesso ao Chatwoot!' });
+  } else {
+    res.status(500).json({ error: 'Falha ao enviar mensagem de teste ao Chatwoot. Verifique as credenciais.' });
+  }
 });
 
 // ----------------------------------------------------

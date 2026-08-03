@@ -728,6 +728,33 @@ document.addEventListener('DOMContentLoaded', () => {
       });
   };
 
+  window.testChatwootNotification = function() {
+    const clientId = document.getElementById('cw-client-id').value;
+    const statusMsg = document.getElementById('cw-status-msg');
+    statusMsg.style.display = 'block';
+    statusMsg.style.color = '#c084fc';
+    statusMsg.textContent = '🧪 Enviando mensagem de teste ao Chatwoot...';
+
+    fetch(`/api/admin/clients/${clientId}/chatwoot/test`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' }
+    })
+      .then(res => res.json())
+      .then(data => {
+        if (data.ok) {
+          statusMsg.style.color = '#34d399';
+          statusMsg.textContent = '🎉 ' + data.message;
+        } else {
+          statusMsg.style.color = '#f87171';
+          statusMsg.textContent = '❌ ' + (data.error || 'Falha ao enviar mensagem de teste.');
+        }
+      })
+      .catch(err => {
+        statusMsg.style.color = '#f87171';
+        statusMsg.textContent = '❌ Erro de comunicação com o servidor: ' + err.message;
+      });
+  };
+
   function escapeHtml(text) {
     if (!text) return '';
     return text.replace(/[&<>"']/g, function(m) {

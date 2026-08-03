@@ -519,11 +519,14 @@
         <input type="password" id="cw-token" class="form-control" placeholder="Token de acesso do usuário/bot no Chatwoot" style="font-size: 0.85rem;">
       </div>
 
-      <div style="display: flex; gap: 0.75rem; margin-top: 1.5rem;">
-        <button type="button" id="btn-cw-auto-inbox" class="btn btn-secondary" onclick="autoCreateInbox()" style="flex: 1; font-size: 0.82rem; background: rgba(59,130,246,0.15); border: 1px solid #3b82f6; color: #60a5fa;">
-          ⚡ Criar Inbox no Chatwoot
+      <div style="display: flex; gap: 0.5rem; margin-top: 1.5rem; flex-wrap: wrap;">
+        <button type="button" id="btn-cw-auto-inbox" class="btn btn-secondary" onclick="autoCreateInbox()" style="flex: 1; font-size: 0.8rem; background: rgba(59,130,246,0.15); border: 1px solid #3b82f6; color: #60a5fa;">
+          ⚡ Criar Inbox
         </button>
-        <button type="button" id="btn-save-cw" class="btn btn-primary" onclick="saveChatwootConfig()" style="flex: 1; font-size: 0.82rem;">
+        <button type="button" id="btn-cw-test" class="btn btn-secondary" onclick="testChatwootNotification()" style="flex: 1; font-size: 0.8rem; background: rgba(168,85,247,0.15); border: 1px solid #a855f7; color: #c084fc;">
+          🧪 Testar Envio
+        </button>
+        <button type="button" id="btn-save-cw" class="btn btn-primary" onclick="saveChatwootConfig()" style="flex: 1; font-size: 0.8rem;">
           💾 Salvar Integração
         </button>
       </div>
