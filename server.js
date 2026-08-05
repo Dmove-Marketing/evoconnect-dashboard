@@ -584,17 +584,43 @@ async function ensureChatwootWebhook(cwConfig, clientId) {
 async function syncChatwootWebhooksToPostgres() {
   const db = loadDB();
   const baseUrl = process.env.BASE_URL || 'https://painel.dmove.com.br';
+  let updatedDb = false;
+
   for (const client of db.clients) {
-    if (client.chatwoot && client.chatwoot.enabled) {
-      const evoWebhookUrl = `${baseUrl}/api/webhook/evogo/${client.id}`;
-      try {
+    try {
+      const pgRes = await pgPool.query(
+        `SELECT webhook FROM instances WHERE name = $1 OR token = $2`,
+        [client.instanceName, client.evoGoToken]
+      );
+      
+      const currentPgWebhook = pgRes.rows[0]?.webhook || '';
+
+      if (currentPgWebhook && !currentPgWebhook.includes('/api/webhook/evogo/')) {
+        if (client.customWebhookUrl !== currentPgWebhook) {
+          client.customWebhookUrl = currentPgWebhook;
+          updatedDb = true;
+          console.log(`[WEBHOOK DUAL-ROUTING] 🔗 Webhook customizado detectado e salvo para ${client.instanceName}: ${currentPgWebhook}`);
+        }
+      }
+
+      const hasChatwoot = client.chatwoot && client.chatwoot.enabled;
+      const hasCustomWebhook = Boolean(client.customWebhookUrl);
+
+      if (hasChatwoot || hasCustomWebhook) {
+        const evoWebhookUrl = `${baseUrl}/api/webhook/evogo/${client.id}`;
         await pgPool.query(
           `UPDATE instances SET webhook = $1, events = 'MESSAGE' WHERE name = $2 OR token = $3`,
           [evoWebhookUrl, client.instanceName, client.evoGoToken]
         );
-        await ensureChatwootWebhook(client.chatwoot, client.id);
-      } catch (err) {}
-    }
+        if (hasChatwoot) {
+          await ensureChatwootWebhook(client.chatwoot, client.id);
+        }
+      }
+    } catch (err) {}
+  }
+
+  if (updatedDb) {
+    saveDB(db);
   }
 }
 
@@ -911,11 +937,33 @@ app.post('/api/webhook/evogo/:clientId', async (req, res) => {
   const db = loadDB();
   const client = db.clients.find(c => c.id === clientId || c.token === clientId || c.instanceName.toLowerCase() === clientId.toLowerCase());
 
-  if (!client || !client.chatwoot || !client.chatwoot.enabled || !client.chatwoot.url || !client.chatwoot.token || !client.chatwoot.accountId || !client.chatwoot.inboxId) {
+  if (!client) return;
+
+  const payload = req.body || {};
+
+  // Repassar para Webhook Customizado / Worker Cloudflare se configurado
+  if (client.customWebhookUrl) {
+    try {
+      fetch(client.customWebhookUrl, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          ...(req.headers['x-api-key'] ? { 'x-api-key': req.headers['x-api-key'] } : {})
+        },
+        body: JSON.stringify(payload)
+      }).catch(err => {
+        console.error(`[CUSTOM WEBHOOK FORWARD ERROR] ${client.instanceName} -> ${client.customWebhookUrl}:`, err.message);
+      });
+      console.log(`[CUSTOM WEBHOOK FORWARD] 🚀 Evento repassado para Worker Cloudflare (${client.instanceName}): ${client.customWebhookUrl}`);
+    } catch (err) {
+      console.error(`[CUSTOM WEBHOOK FORWARD ERROR] Exceção em ${client.instanceName}:`, err.message);
+    }
+  }
+
+  if (!client.chatwoot || !client.chatwoot.enabled || !client.chatwoot.url || !client.chatwoot.token || !client.chatwoot.accountId || !client.chatwoot.inboxId) {
     return;
   }
 
-  const payload = req.body || {};
   const event = payload.event || payload.Event || payload.type;
   
   if (event && !['MESSAGES_UPSERT', 'MESSAGE', 'MESSAGES.UPSERT'].includes(String(event).toUpperCase())) {
@@ -1035,9 +1083,11 @@ app.post('/api/webhook/chatwoot/:clientId', async (req, res) => {
 app.post('/api/admin/clients/:id/chatwoot', async (req, res) => {
   const db = loadDB();
   const client = db.clients.find(c => c.id === req.params.id);
-  if (!client) return res.status(404).json({ error: 'Cliente não encontrado' });
+  const { enabled, url, accountId, token, inboxId, autoCreateInbox, customWebhookUrl } = req.body;
 
-  const { enabled, url, accountId, token, inboxId, autoCreateInbox } = req.body;
+  if (customWebhookUrl !== undefined) {
+    client.customWebhookUrl = (customWebhookUrl || '').trim();
+  }
 
   let cwConfig = {
     enabled: enabled === true || enabled === 'true',

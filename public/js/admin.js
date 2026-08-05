@@ -633,6 +633,7 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('cw-account-id').value = cw.accountId || '';
     document.getElementById('cw-inbox-id').value = cw.inboxId || '';
     document.getElementById('cw-token').value = cw.token || '';
+    document.getElementById('cw-custom-webhook').value = client.customWebhookUrl || '';
 
     const statusMsg = document.getElementById('cw-status-msg');
     statusMsg.style.display = 'none';
@@ -652,6 +653,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const accountId = document.getElementById('cw-account-id').value;
     const inboxId = document.getElementById('cw-inbox-id').value;
     const token = document.getElementById('cw-token').value;
+    const customWebhookUrl = document.getElementById('cw-custom-webhook').value.trim();
 
     const statusMsg = document.getElementById('cw-status-msg');
     statusMsg.style.display = 'block';
@@ -661,7 +663,7 @@ document.addEventListener('DOMContentLoaded', () => {
     fetch(`/api/admin/clients/${clientId}/chatwoot`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ enabled, url, accountId, inboxId, token })
+      body: JSON.stringify({ enabled, url, accountId, inboxId, token, customWebhookUrl })
     })
       .then(res => res.json())
       .then(data => {
