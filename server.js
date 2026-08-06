@@ -351,8 +351,38 @@ async function getEVOQRCode(server, instanceName, clientEvoToken = '') {
   });
 
   if (res.ok) {
-    qrCode = res.data?.data?.Qrcode || res.data?.data?.qrcode || res.data?.qrcode || res.data?.code || res.data?.base64 || res.data?.qrcode?.base64;
+    qrCode = res.data?.data?.qrcode || res.data?.data?.Qrcode || res.data?.qrcode || res.data?.code || res.data?.base64 || res.data?.qrcode?.base64;
     pairingCode = res.data?.data?.PairingCode || res.data?.data?.pairingCode || res.data?.pairingCode || null;
+  }
+
+  // Se a Evolution Go retornou erro de "no QR code" ou 400 (sessão antiga / JID desatualizado)
+  if (!qrCode && (res.status === 400 || res.data?.error?.includes('no QR code'))) {
+    console.log(`[QR CODE HEALING] 🔄 Limpando sessão antiga e gerando novo QR para ${instanceName}...`);
+    
+    // 1. Desconecta sessão antiga travada
+    await evoFetch(`${cleanUrl}/instance/logout`, {
+      method: 'DELETE',
+      headers: { 'apikey': activeKey }
+    }).catch(() => {});
+
+    // 2. Inicializa o socket da instância
+    await evoFetch(`${cleanUrl}/instance/connect`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'apikey': activeKey },
+      body: JSON.stringify({})
+    }).catch(() => {});
+
+    // 3. Aguarda 1 segundo e busca o novo QR Code
+    await new Promise(r => setTimeout(r, 1200));
+
+    res = await evoFetch(`${cleanUrl}/instance/qr`, {
+      headers: { 'apikey': activeKey }
+    });
+
+    if (res.ok) {
+      qrCode = res.data?.data?.qrcode || res.data?.data?.Qrcode || res.data?.qrcode || res.data?.code || res.data?.base64 || res.data?.qrcode?.base64;
+      pairingCode = res.data?.data?.PairingCode || res.data?.data?.pairingCode || res.data?.pairingCode || null;
+    }
   }
 
   if (!qrCode) {
