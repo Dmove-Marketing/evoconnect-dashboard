@@ -426,21 +426,36 @@ async function getEVOQRCode(server, instanceName, clientEvoToken = '') {
     }
 
     if (!qrCode) {
-      // Se na v1 a instância ficou travada em "connecting", força o logout/reset para liberar o QR Code
-      await evoFetch(`${cleanUrl}/instance/logout/${encodeURIComponent(instanceName)}`, {
-        method: 'DELETE',
-        headers: { 'apikey': server.apiKey }
-      }).catch(() => {});
+      // Em v1.8 o endpoint /connect devolve {"count": 0} para iniciar o socket.
+      // Se retornar objecto com count, aguarda 1.5s para o Baileys emitir o QR Code e tenta novamente sem fazer logout.
+      if (res.data && typeof res.data.count !== 'undefined') {
+        await new Promise(r => setTimeout(r, 1500));
+        res = await evoFetch(`${cleanUrl}/instance/connect/${encodeURIComponent(instanceName)}`, {
+          headers: { 'apikey': server.apiKey }
+        });
+        if (res.ok) {
+          qrCode = res.data?.code || res.data?.base64 || res.data?.qrcode?.base64 || res.data?.qrcode;
+          pairingCode = res.data?.pairingCode || null;
+        }
+      }
 
-      await new Promise(r => setTimeout(r, 1000));
+      // Se mesmo assim nao tiver qrCode e NAO for um retorno de inicialização (count), apenas aí tenta o reset seguro
+      if (!qrCode && (!res.data || typeof res.data.count === 'undefined')) {
+        await evoFetch(`${cleanUrl}/instance/logout/${encodeURIComponent(instanceName)}`, {
+          method: 'DELETE',
+          headers: { 'apikey': server.apiKey }
+        }).catch(() => {});
 
-      res = await evoFetch(`${cleanUrl}/instance/connect/${encodeURIComponent(instanceName)}`, {
-        headers: { 'apikey': server.apiKey }
-      });
+        await new Promise(r => setTimeout(r, 1000));
 
-      if (res.ok) {
-        qrCode = res.data?.code || res.data?.base64 || res.data?.qrcode?.base64 || res.data?.qrcode;
-        pairingCode = res.data?.pairingCode || null;
+        res = await evoFetch(`${cleanUrl}/instance/connect/${encodeURIComponent(instanceName)}`, {
+          headers: { 'apikey': server.apiKey }
+        });
+
+        if (res.ok) {
+          qrCode = res.data?.code || res.data?.base64 || res.data?.qrcode?.base64 || res.data?.qrcode;
+          pairingCode = res.data?.pairingCode || null;
+        }
       }
     }
   }
