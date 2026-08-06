@@ -270,11 +270,20 @@ async function fetchServerInstances(server) {
       : (Array.isArray(res.data?.data) ? res.data.data : (Array.isArray(res.data?.response) ? res.data.response : null));
 
     if (list) {
-      return list.map(item => ({
-        name: item.instance?.instanceName || item.name || item.instanceName || 'Instância',
-        status: (item.instance?.connectionStatus === 'open' || item.instance?.status === 'open' || item.instance?.state === 'open' || item.connectionStatus === 'open' || item.status === 'open' || item.state === 'open' || item.connected) ? 'open' : 'close',
-        token: item.token || item.instance?.token || ''
-      }));
+      return list.map(item => {
+        const rawState = item.instance?.connectionStatus || item.instance?.status || item.instance?.state || item.connectionStatus || item.status || item.state || '';
+        let status = 'close';
+        if (item.connected || rawState === 'open' || rawState === 'connected') {
+          status = 'open';
+        } else if (rawState === 'connecting') {
+          status = 'connecting';
+        }
+        return {
+          name: item.instance?.instanceName || item.name || item.instanceName || 'Instância',
+          status: status,
+          token: item.token || item.instance?.token || ''
+        };
+      });
     }
   }
 
@@ -293,11 +302,23 @@ async function getEVOStatus(server, instanceName, clientEvoToken = '', skipDeepC
   const allInstances = await fetchServerInstances(server);
   const found = allInstances.find(i => String(i.name).toLowerCase() === String(instanceName).toLowerCase());
   if (found) {
-    return {
-      status: found.status === 'open' ? 'CONNECTED' : 'DISCONNECTED',
-      phone: found.phone || '',
-      profileName: found.name || ''
-    };
+    if (found.status === 'open') {
+      if (!skipDeepCheck) {
+        const isSocketAlive = await checkDeepSocketHealth(server, instanceName, clientEvoToken);
+        if (!isSocketAlive) {
+          return {
+            status: 'GHOST',
+            phone: found.phone || '',
+            profileName: found.name || ''
+          };
+        }
+      }
+      return { status: 'CONNECTED', phone: found.phone || '', profileName: found.name || '' };
+    } else if (found.status === 'connecting') {
+      return { status: 'CONNECTING', phone: found.phone || '', profileName: found.name || '' };
+    } else {
+      return { status: 'DISCONNECTED', phone: found.phone || '', profileName: found.name || '' };
+    }
   }
 
   // 2. Tenta endpoint padrão v1/v2 (/instance/connectionState/:name)
@@ -689,6 +710,7 @@ setInterval(async () => {
       
       let newStatus = 'close';
       if (statusRes.status === 'CONNECTED') newStatus = 'open';
+      else if (statusRes.status === 'CONNECTING') newStatus = 'connecting';
       else if (statusRes.status === 'GHOST') newStatus = 'ghost';
 
       client.lastStatus = newStatus;
