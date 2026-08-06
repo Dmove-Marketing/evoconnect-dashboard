@@ -416,6 +416,25 @@ async function getEVOQRCode(server, instanceName, clientEvoToken = '') {
       qrCode = res.data?.code || res.data?.base64 || res.data?.qrcode?.base64 || res.data?.qrcode;
       pairingCode = res.data?.pairingCode || null;
     }
+
+    if (!qrCode) {
+      // Se na v1 a instância ficou travada em "connecting", força o logout/reset para liberar o QR Code
+      await evoFetch(`${cleanUrl}/instance/logout/${encodeURIComponent(instanceName)}`, {
+        method: 'DELETE',
+        headers: { 'apikey': server.apiKey }
+      }).catch(() => {});
+
+      await new Promise(r => setTimeout(r, 1000));
+
+      res = await evoFetch(`${cleanUrl}/instance/connect/${encodeURIComponent(instanceName)}`, {
+        headers: { 'apikey': server.apiKey }
+      });
+
+      if (res.ok) {
+        qrCode = res.data?.code || res.data?.base64 || res.data?.qrcode?.base64 || res.data?.qrcode;
+        pairingCode = res.data?.pairingCode || null;
+      }
+    }
   }
 
   if (qrCode && typeof qrCode === 'string') {
