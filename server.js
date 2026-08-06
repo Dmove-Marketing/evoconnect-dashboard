@@ -756,16 +756,8 @@ setInterval(async () => {
         }
       }
 
-      // 2. AUTO-HEALING & ALERTA DE DESCONEXÃO POR E-MAIL (🔴)
+      // 2. ALERTA DE DESCONEXÃO POR E-MAIL (🔴)
       if (newStatus === 'close') {
-        const THREE_MINUTES = 3 * 60 * 1000;
-        const lastHeal = client.lastAutoHealAt || 0;
-        if (now - lastHeal > THREE_MINUTES) {
-          console.log(`[AUTO-HEALING] ⚡ Disparando reconexão automática para ${client.instanceName} (${client.name})...`);
-          client.lastAutoHealAt = now;
-          restartEVOInstance(clientServer, client.instanceName, client.evoGoToken).catch(() => {});
-        }
-
         if (previousStatus === 'open') {
           console.log(`[ALERTAS] Instância ${client.instanceName} (${client.name}) DESCONECTOU!`);
 
