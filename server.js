@@ -185,22 +185,30 @@ async function restartEVOInstance(server, instanceName, clientEvoToken = '') {
   const cleanUrl = server.url.replace(/\/$/, '');
   const activeKey = clientEvoToken || server.apiKey;
 
-  // 1. Tenta POST /instance/restart/:name (v2 e v1 Node)
+  // 1. Tenta PUT /instance/restart/:name (v1.x Node)
   let res = await evoFetch(`${cleanUrl}/instance/restart/${encodeURIComponent(instanceName)}`, {
+    method: 'PUT',
+    headers: { 'apikey': server.apiKey }
+  });
+
+  if (res.ok) return { ok: true, data: res.data };
+
+  // 2. Tenta POST /instance/restart/:name (v2.x Node)
+  res = await evoFetch(`${cleanUrl}/instance/restart/${encodeURIComponent(instanceName)}`, {
     method: 'POST',
     headers: { 'apikey': server.apiKey }
   });
 
   if (res.ok) return { ok: true, data: res.data };
 
-  // 2. Tenta GET /instance/connect/:name (v1 e v2 Node reload)
+  // 3. Tenta GET /instance/connect/:name (v1 e v2 Node reload)
   res = await evoFetch(`${cleanUrl}/instance/connect/${encodeURIComponent(instanceName)}`, {
     headers: { 'apikey': server.apiKey }
   });
 
   if (res.ok) return { ok: true, data: res.data };
 
-  // 3. Evolution Go: POST /instance/connect COM CORPO JSON {}
+  // 4. Evolution Go: POST /instance/connect COM CORPO JSON {}
   res = await evoFetch(`${cleanUrl}/instance/connect`, {
     method: 'POST',
     headers: { 
